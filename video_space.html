@@ -127,16 +127,10 @@
 
     <!-- 粘贴视频地址区域 (默认隐藏) -->
     <section id="inputSection" class="bg-white rounded-xl shadow-lg p-4 mb-4 mx-2 hidden">
-        <div class="flex justify-between items-center mb-4">
+        <div class="flex items-center mb-4">
             <h2 class="text-xl font-semibold flex items-center">
                 <i class="fa fa-paste text-primary mr-2"></i> 粘贴视频地址
             </h2>
-            <button 
-                id="closeInputBtn" 
-                class="text-gray-500 hover:text-gray-700 transition-colors"
-            >
-                <i class="fa fa-times text-xl"></i>
-            </button>
         </div>
         <div class="mb-4">
             <textarea 
@@ -167,6 +161,12 @@
                 class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all flex items-center"
             >
                 <i class="fa fa-trash mr-2"></i> 清空输入
+            </button>
+            <button 
+                id="closeInputBtn" 
+                class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-all flex items-center"
+            >
+                <i class="fa fa-times mr-2"></i> 关闭
             </button>
         </div>
     </section>
@@ -259,6 +259,19 @@
         </div>
     </div>
 
+    <!-- 剧集模态框 -->
+    <div id="episodesModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-6 max-w-lg w-full mx-4 relative">
+            <button id="closeEpisodesModal" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition-colors">
+                <i class="fa fa-times text-xl"></i>
+            </button>
+            <h3 id="episodesModalTitle" class="text-xl font-bold mb-4">剧集列表</h3>
+            <div id="episodesModalList" class="grid grid-cols-2 gap-2 max-h-[70vh] overflow-y-auto">
+                <!-- 动态生成剧集列表 -->
+            </div>
+        </div>
+    </div>
+
     <script>
         // 全局变量
         let currentVideo = null;
@@ -285,6 +298,13 @@
             document.getElementById('confirmDialogBtn').addEventListener('click', confirmDeleteVideo);
             document.getElementById('closePlayerBtn').addEventListener('click', hidePlayerSection);
             document.getElementById('saveProgressBtn').addEventListener('click', saveProgressManually);
+
+            // 剧集模态框关闭按钮及点击遮罩关闭
+            document.getElementById('closeEpisodesModal').addEventListener('click', hideEpisodesModal);
+            const episodesOverlay = document.getElementById('episodesModal');
+            episodesOverlay.addEventListener('click', (e) => {
+                if (e.target === episodesOverlay) hideEpisodesModal();
+            });
         });
 
         // 显示粘贴视频地址区域
@@ -530,7 +550,6 @@
                     </div>
                     <button class="toggle-episodes w-full py-2 px-4 bg-gray-100 rounded-lg text-gray-700 hover:bg-gray-200 transition-all flex justify-center items-center">
                         <span>查看全部剧集</span>
-                        <i class="fa fa-chevron-down ml-2 transition-transform duration-300"></i>
                     </button>
                     <div class="episodes-container mt-4 hidden">
                         <div class="grid grid-cols-2 gap-2">
@@ -566,11 +585,10 @@
             // 绑定展开/折叠事件
             const toggleBtn = card.querySelector('.toggle-episodes');
             const episodesContainer = card.querySelector('.episodes-container');
-            const chevron = toggleBtn.querySelector('.fa-chevron-down');
 
-            toggleBtn.addEventListener('click', () => {
-                episodesContainer.classList.toggle('hidden');
-                chevron.style.transform = episodesContainer.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showEpisodesModal(videoData);
             });
 
             // 绑定播放事件
@@ -1968,6 +1986,64 @@
                         }
                     }
                 });
+            }
+        }
+
+        // 显示剧集模态框
+        function showEpisodesModal(videoData) {
+            const modal = document.getElementById('episodesModal');
+            const titleEl = document.getElementById('episodesModalTitle');
+            const listEl = document.getElementById('episodesModalList');
+
+            // 设置标题
+            titleEl.textContent = `《${escapeHTML(videoData.title)}》全部剧集`;
+
+            // 生成剧集列表
+            listEl.innerHTML = videoData.episodes.map(episode => {
+                const progress = getSavedProgress(videoData.id, episode.id);
+                const progressDisplay = progress > 0 ? ` (已观看 ${formatTime(progress)})` : '';
+                return `
+                    <div class="flex gap-1">
+                        <button class="modal-play-episode flex-1 py-2 px-3 bg-primary/10 text-primary rounded hover:bg-primary/20 transition-all text-sm truncate" data-episode-id="${episode.id}">
+                            ${escapeHTML(episode.title)}${progressDisplay}
+                        </button>
+                        <button class="modal-copy-url px-2 py-2 text-gray-400 hover:text-primary transition-colors" data-url="${episode.url}" title="复制链接">
+                            <i class="fa fa-link"></i>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+
+            // 显示模态框
+            modal.classList.remove('hidden');
+
+            // 绑定剧集播放事件
+            listEl.querySelectorAll('.modal-play-episode').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const epId = e.currentTarget.dataset.episodeId;
+                    const episode = videoData.episodes.find(ep => ep.id === epId);
+                    if (episode) {
+                        playVideo(videoData.id, videoData.title, episode);
+                        hideEpisodesModal();
+                    }
+                });
+            });
+
+            // 绑定复制链接事件
+            listEl.querySelectorAll('.modal-copy-url').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const url = e.currentTarget.dataset.url;
+                    copyToClipboard(url);
+                    e.stopPropagation();
+                });
+            });
+        }
+
+        // 隐藏剧集模态框
+        function hideEpisodesModal() {
+            const modal = document.getElementById('episodesModal');
+            if (modal) {
+                modal.classList.add('hidden');
             }
         }
     </script>
