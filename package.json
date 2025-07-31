@@ -1,0 +1,22 @@
+{
+  "name": "video-space",
+  "version": "1.2.0",
+  "description": "视频播放应用，支持多集视频管理和播放",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": ["video", "player", "express", "proxy"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "request": "^2.88.2",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+} 
