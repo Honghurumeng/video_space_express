@@ -213,8 +213,8 @@ async function handleProxyRequest(targetUrl, req, res) {
     console.log('请求头:', JSON.stringify(req.headers, null, 2));
 
     try {
-        // 检查是否为HLS流 (.m3u8)
-        const isHLS = targetUrl.toLowerCase().includes('.m3u8');
+        // 初步检查是否为HLS流（URL包含 .m3u8）
+        let isHLS = targetUrl.toLowerCase().includes('.m3u8');
         const isTS = targetUrl.toLowerCase().includes('.ts');
         
         console.log('文件类型判断:', { isHLS, isTS });
@@ -284,6 +284,15 @@ async function handleProxyRequest(targetUrl, req, res) {
             proxy: false
         });
 
+        // 有些HLS地址不包含 .m3u8，但响应头会标识类型
+        if (!isHLS) {
+            const ct = response.headers['content-type'] || '';
+            if (ct.toLowerCase().includes('mpegurl')) {
+                console.log('通过响应头判断为 HLS 流');
+                isHLS = true;
+            }
+        }
+
         console.log('✅ 请求成功');
         console.log('响应状态:', response.status);
         console.log('响应头:', JSON.stringify(response.headers, null, 2));
@@ -307,7 +316,7 @@ async function handleProxyRequest(targetUrl, req, res) {
             'X-Proxy-By': 'Video-Space-Proxy'
         };
 
-        // 根据内容类型设置不同的响应头
+        // 根据更新后的 isHLS 值设置不同的响应头
         if (isHLS) {
             // HLS流的特殊处理 - 需要修改内容中的相对URL
             responseHeaders['Content-Type'] = 'application/vnd.apple.mpegurl; charset=utf-8';
@@ -655,8 +664,21 @@ app.post('/check-video', async (req, res) => {
             }
         });
         
+        const contentType = (response.headers['content-type'] || '').toLowerCase();
+
+        // 定义可播放的 Content-Type 关键字
+        const playableKeywords = [
+            'mpegurl',      // m3u8
+            'video/',       // video/*
+            'application/x-mpegurl',
+            'application/octet-stream'
+        ];
+
+        // 判断是否包含任一可播放关键字
+        const isPlayable = playableKeywords.some(k => contentType.includes(k));
+
         res.json({
-            accessible: true,
+            accessible: isPlayable,
             contentType: response.headers['content-type'],
             contentLength: response.headers['content-length']
         });

@@ -382,8 +382,17 @@
                 let failedUrls = [];
                 
                 checkResults.forEach((result, index) => {
-                    if (result.status === 'fulfilled' && result.value.accessible) {
-                        successCount++;
+                    if (result.status === 'fulfilled') {
+                        const ct = (result.value.contentType || '').toLowerCase();
+                        const playable = ct.includes('mpegurl') || ct.startsWith('video/') || ct.includes('application/x-mpegurl') || ct.includes('application/octet-stream');
+                        if (result.value.accessible && playable) {
+                            successCount++;
+                        } else {
+                            failedUrls.push({
+                                title: videoData.episodes[index].title,
+                                url: videoData.episodes[index].url
+                            });
+                        }
                     } else {
                         failedUrls.push({
                             title: videoData.episodes[index].title,
@@ -391,6 +400,12 @@
                         });
                     }
                 });
+                
+                // 如果全部URL都无法访问，直接中止保存
+                if (successCount === 0) {
+                    showToast('所有链接均无法播放，请检查输入链接', 'error');
+                    return;
+                }
                 
                 // 如果有部分URL无法访问，给出警告但仍然保存
                 if (failedUrls.length > 0 && successCount > 0) {
@@ -836,7 +851,7 @@
         }
         
         // 使用新播放器播放
-        function tryIframePlay(url) {
+        async function tryIframePlay(url) {
             try {
                 // 清理之前的播放器实例
                 cleanupPlayer();
@@ -848,7 +863,25 @@
                 const savedProgress = getSavedProgress(currentVideo.id, currentEpisode.id);
                 
                 // 检查是否为HLS流
-                const isHLS = url.toLowerCase().includes('.m3u8');
+                let isHLS = url.toLowerCase().includes('.m3u8');
+                
+                // 如果未包含 .m3u8，则通过服务器端 HEAD 请求检查 Content-Type
+                if (!isHLS) {
+                    try {
+                        const resp = await fetch('/check-video', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        });
+                        const data = await resp.json();
+                        if (data && data.contentType && data.contentType.toLowerCase().includes('mpegurl')) {
+                            isHLS = true;
+                            console.log('通过 Content-Type 判断为 HLS 流');
+                        }
+                    } catch (e) {
+                        console.warn('检查 Content-Type 失败:', e);
+                    }
+                }
                 
                 // 使用代理服务器的URL来避免跨域问题
                 const proxyUrl = `/proxy/video?url=${encodeURIComponent(url)}`;
@@ -2045,6 +2078,29 @@
             if (modal) {
                 modal.classList.add('hidden');
             }
+        }
+
+        // 显示无法播放链接列表模态框
+        function showFailedUrlsDialog(list) {
+            // 若已有则先移除
+            const existing = document.getElementById('failedUrlsDialog');
+            if (existing) existing.remove();
+
+            const dialog = document.createElement('div');
+            dialog.id = 'failedUrlsDialog';
+            dialog.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            dialog.innerHTML = `
+                <div class="bg-white rounded-xl p-6 max-w-xl w-full mx-4">
+                    <h3 class="text-xl font-bold mb-4 text-red-600"><i class="fa fa-exclamation-triangle mr-2"></i>以下链接可能无法播放</h3>
+                    <div class="max-h-[60vh] overflow-y-auto mb-6 space-y-2 text-sm text-gray-700">
+                        ${list.map(item=>`<div><strong>${escapeHTML(item.title)}</strong><br><span class='break-all'>${escapeHTML(item.url)}</span></div>`).join('')}
+                    </div>
+                    <div class="text-right">
+                        <button id="closeFailedUrls" class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-all">确定</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(dialog);
+            document.getElementById('closeFailedUrls').addEventListener('click', ()=>dialog.remove());
         }
     </script>
 </body>
