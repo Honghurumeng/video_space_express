@@ -657,6 +657,9 @@
             currentEpisode = episode;
             isPlayerActive = true; // 播放器开启
             
+            // 新增：记录最近观看的剧集
+            saveLastWatched(videoId, episode.id);
+            
             // 显示播放区域
             const playerContainer = document.getElementById('playerContainer');
             playerContainer.classList.remove('hidden');
@@ -732,7 +735,7 @@
                 // 获取保存的播放进度
                 const savedProgress = getSavedProgress(currentVideo.id, currentEpisode.id);
                 
-                showToast('正在尝试直连HLS播放...', 'info');
+                // showToast('正在尝试直连HLS播放...', 'info');
                 
                 // 获取video元素
                 const videoElement = document.getElementById('videoElement');
@@ -757,7 +760,7 @@
                     hlsInstance.attachMedia(videoElement);
                     
                     hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-                        showToast('直连HLS流解析成功！', 'success');
+                        // showToast('直连HLS流解析成功！', 'success');
                         setupVideoEvents(videoElement, savedProgress);
                     });
                     
@@ -772,7 +775,7 @@
                 } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
                     // Safari原生支持
                     videoElement.src = url;
-                    showToast('使用原生HLS直连播放', 'info');
+                    // showToast('使用原生HLS直连播放', 'info');
                     setupVideoEvents(videoElement, savedProgress);
                 } else {
                     // 降级到Video.js直连
@@ -891,7 +894,7 @@
                 // 使用代理服务器的URL来避免跨域问题
                 const proxyUrl = `/proxy/video?url=${encodeURIComponent(url)}`;
                 
-                showToast('正在初始化播放器...', 'info');
+                // showToast('正在初始化播放器...', 'info');
                 
                 // 获取video元素
                 const videoElement = document.getElementById('videoElement');
@@ -1090,13 +1093,13 @@
                 
                 hlsInstance.on(Hls.Events.MANIFEST_LOADING, (event, data) => {
                     console.log('📋 HLS清单开始加载:', data.url);
-                    showToast('正在加载播放列表...', 'info');
+                    // showToast('正在加载播放列表...', 'info');
                 });
                 
                 hlsInstance.on(Hls.Events.MANIFEST_LOADED, (event, data) => {
                     console.log('✅ HLS清单加载完成');
                     console.log('清单内容:', data);
-                    showToast('播放列表加载完成', 'success');
+                    // showToast('播放列表加载完成', 'success');
                 });
                 
                 hlsInstance.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
@@ -1125,7 +1128,7 @@
                         return;
                     }
                     
-                    showToast('HLS流解析成功，开始播放', 'success');
+                    // showToast('HLS流解析成功，开始播放', 'success');
                     
                     // 设置视频事件
                     setupVideoEvents(videoElement, savedProgress);
@@ -1146,7 +1149,7 @@
                                 showToast('视频开始播放', 'success');
                             }).catch(err => {
                                 console.warn('⚠️ 自动播放失败，需要用户交互:', err);
-                                showToast('点击播放按钮开始播放', 'info');
+                                // showToast('点击播放按钮开始播放', 'info');
                                 
                                 // 添加一个点击播放的提示
                                 addPlayButtonOverlay(videoElement);
@@ -1159,7 +1162,7 @@
                                 showToast('视频开始播放', 'success');
                             } catch (err) {
                                 console.warn('⚠️ 自动播放失败（兼容模式），需要用户交互:', err);
-                                showToast('点击播放按钮开始播放', 'info');
+                                // showToast('点击播放按钮开始播放', 'info');
                                 
                                 // 添加一个点击播放的提示
                                 addPlayButtonOverlay(videoElement);
@@ -1181,10 +1184,10 @@
                     if (data.details?.fragments?.length > 0) {
                         console.log('首个片段URL:', data.details.fragments[0]?.url);
                         console.log('总时长:', data.details.totalduration);
-                        showToast(`子级别加载成功，包含 ${data.details.fragments.length} 个片段`, 'success');
+                        // showToast(`子级别加载成功，包含 ${data.details.fragments.length} 个片段`, 'success');
                     } else {
                         console.warn('⚠️ 子级别加载完成但没有片段');
-                        showToast('警告：子级别没有找到视频片段', 'warning');
+                        // showToast('警告：子级别没有找到视频片段', 'warning');
                     }
                 });
                 
@@ -1332,7 +1335,7 @@
                 // 监听首帧渲染
                 hlsInstance.on(Hls.Events.INIT_PTS_FOUND, () => {
                     console.log('🎬 找到初始时间戳，即将开始播放');
-                    showToast('视频即将开始播放...', 'info');
+                    // showToast('视频即将开始播放...', 'info');
                 });
                 
                 console.log('✅ HLS播放器初始化完成');
@@ -1407,7 +1410,7 @@
             });
             
             videoElement.addEventListener('canplay', () => {
-                showToast('视频加载完成，可以播放', 'success');
+                // showToast('视频加载完成，可以播放', 'success');
                 
                 // 跳转到保存的进度
                 if (savedProgress > 0 && !hasJumpedToProgress) {
@@ -1436,11 +1439,11 @@
         // 设置Video.js事件
         function setupVideoJSEvents(player, savedProgress) {
             player.on('loadstart', () => {
-                showToast('开始加载视频...', 'info');
+                // showToast('开始加载视频...', 'info');
             });
             
             player.on('canplay', () => {
-                showToast('视频加载完成，可以播放', 'success');
+                // showToast('视频加载完成，可以播放', 'success');
                 
                 // 跳转到保存的进度
                 if (savedProgress > 0 && !hasJumpedToProgress) {
@@ -1743,21 +1746,24 @@
         
         // 获取最新观看进度显示
         function getLatestProgressDisplay(videoData) {
-            let latestProgress = 0;
-            let latestEpisode = null;
+            const lastEpisodeId = getLastWatchedEpisodeId(videoData.id);
+            let episodeToShow = null;
+            let progress = 0;
             
-            videoData.episodes.forEach(episode => {
-                const progress = getSavedProgress(videoData.id, episode.id);
-                if (progress > latestProgress) {
-                    latestProgress = progress;
-                    latestEpisode = episode;
+            if (lastEpisodeId) {
+                episodeToShow = videoData.episodes.find(ep => ep.id === lastEpisodeId);
+                if (episodeToShow) {
+                    progress = getSavedProgress(videoData.id, episodeToShow.id);
                 }
-            });
-            
-            if (latestProgress > 0 && latestEpisode) {
-                return `最近观看: ${latestEpisode.title} (${formatTime(latestProgress)})`;
             }
-            return '';
+            
+            // 如果没有记录，保持为空字符串
+            if (!episodeToShow) return '';
+            
+            if (progress > 0) {
+                return `最近观看: ${episodeToShow.title} (${formatTime(progress)})`;
+            }
+            return `最近观看: ${episodeToShow.title}`;
         }
         
         // 刷新进度显示
@@ -2106,6 +2112,19 @@
                 </div>`;
             document.body.appendChild(dialog);
             document.getElementById('closeFailedUrls').addEventListener('click', ()=>dialog.remove());
+        }
+
+        // 新增：保存最近观看的剧集信息
+        function saveLastWatched(videoId, episodeId) {
+            const lastWatched = JSON.parse(localStorage.getItem('lastWatched') || '{}');
+            lastWatched[videoId] = { episodeId: episodeId, time: Date.now() };
+            localStorage.setItem('lastWatched', JSON.stringify(lastWatched));
+        }
+
+        // 新增：获取最近观看的剧集 ID
+        function getLastWatchedEpisodeId(videoId) {
+            const lastWatched = JSON.parse(localStorage.getItem('lastWatched') || '{}');
+            return lastWatched[videoId] ? lastWatched[videoId].episodeId : null;
         }
     </script>
 </body>
