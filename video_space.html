@@ -186,11 +186,9 @@
             <div id="videoPlayer" class="rounded-lg overflow-hidden" style="position: relative; width: 100%; height: 100%;">
                 <video
                     id="videoElement"
-                    class="video-js vjs-default-skin"
                     controls
                     preload="auto"
                     style="width: 100%; height: 100%;"
-                    data-setup="{}"
                 >
                     <p class="vjs-no-js">
                         您的浏览器不支持视频播放，请 
@@ -889,199 +887,407 @@
         
         // 初始化HLS.js播放器（使用服务器端URL重写）
         function initHLSPlayer(url, videoElement, savedProgress) {
-            console.log('初始化HLS播放器，URL:', url);
+            console.log('=== 开始初始化HLS播放器 ===');
+            console.log('代理URL:', url);
+            console.log('视频元素:', videoElement);
+            console.log('保存的进度:', savedProgress);
             
-            // 使用优化的HLS.js配置
-            hlsInstance = new Hls({
+            // 检查HLS.js是否可用
+            if (typeof Hls === 'undefined') {
+                console.error('HLS.js库未加载');
+                showToast('播放器库未加载，请刷新页面重试', 'error');
+                return;
+            }
+            
+            // 检查视频元素
+            if (!videoElement) {
+                console.error('视频元素不存在');
+                showToast('视频播放器初始化失败', 'error');
+                return;
+            }
+            
+            // 清理之前的实例
+            if (hlsInstance) {
+                try {
+                    hlsInstance.destroy();
+                    console.log('已清理之前的HLS实例');
+                } catch (e) {
+                    console.error('清理HLS实例失败:', e);
+                }
+                hlsInstance = null;
+            }
+            
+            // 使用优化的HLS.js配置（使用新的参数格式）
+            const hlsConfig = {
                 enableWorker: true,
                 lowLatencyMode: false,
                 backBufferLength: 90,
                 maxBufferLength: 30,
                 maxMaxBufferLength: 600,
                 liveSyncDurationCount: 3,
-                // 关键：增加重试配置
-                manifestLoadingTimeOut: 10000,
-                manifestLoadingMaxRetry: 3,
-                manifestLoadingRetryDelay: 1000,
-                levelLoadingTimeOut: 10000,
-                levelLoadingMaxRetry: 3,
-                levelLoadingRetryDelay: 1000,
-                fragLoadingTimeOut: 20000,
-                fragLoadingMaxRetry: 6,
-                fragLoadingRetryDelay: 1000,
+                // 使用新的策略配置（替代已弃用的参数）
+                manifestLoadPolicy: {
+                    default: {
+                        maxTimeToFirstByteMs: 15000,
+                        maxLoadTimeMs: 15000,
+                        timeoutRetry: {
+                            maxNumRetry: 5,
+                            retryDelayMs: 1000,
+                            maxRetryDelayMs: 0
+                        },
+                        errorRetry: {
+                            maxNumRetry: 5,
+                            retryDelayMs: 1000,
+                            maxRetryDelayMs: 8000
+                        }
+                    }
+                },
+                playlistLoadPolicy: {
+                    default: {
+                        maxTimeToFirstByteMs: 15000,
+                        maxLoadTimeMs: 15000,
+                        timeoutRetry: {
+                            maxNumRetry: 5,
+                            retryDelayMs: 1000,
+                            maxRetryDelayMs: 0
+                        },
+                        errorRetry: {
+                            maxNumRetry: 5,
+                            retryDelayMs: 1000,
+                            maxRetryDelayMs: 8000
+                        }
+                    }
+                },
+                fragLoadPolicy: {
+                    default: {
+                        maxTimeToFirstByteMs: 25000,
+                        maxLoadTimeMs: 25000,
+                        timeoutRetry: {
+                            maxNumRetry: 8,
+                            retryDelayMs: 1500,
+                            maxRetryDelayMs: 0
+                        },
+                        errorRetry: {
+                            maxNumRetry: 8,
+                            retryDelayMs: 1500,
+                            maxRetryDelayMs: 8000
+                        }
+                    }
+                },
                 // 调试配置
-                debug: false,
+                debug: false, // 关闭调试日志，避免控制台混乱
                 enableSoftwareAES: true,
                 capLevelToPlayerSize: false,
-                startPosition: -1
-            });
+                startPosition: savedProgress > 0 ? savedProgress : -1,
+                // 添加额外的配置
+                autoStartLoad: true,
+                defaultAudioCodec: 'mp4a.40.2',
+                xhrSetup: function(xhr, url) {
+                    xhr.setRequestHeader('Cache-Control', 'no-cache');
+                    xhr.setRequestHeader('Pragma', 'no-cache');
+                },
+                // 添加更多优化配置
+                abrEwmaDefaultEstimate: 500000,
+                abrEwmaFastLive: 3,
+                abrEwmaSlowLive: 9,
+                abrEwmaDefaultVoD: 1000,
+                abrEwmaFastVoD: 3,
+                abrEwmaSlowVoD: 9,
+                // 缓冲配置
+                highBufferWatchdogPeriod: 2,
+                nudgeOffset: 0.1,
+                nudgeMaxRetry: 3,
+                // 关键帧配置
+                maxFragLookUpTolerance: 0.25,
+                // 自动播放配置
+                autoPlay: true,
+                // 启用片段预加载
+                startFragPrefetch: true
+            };
             
-            hlsInstance.loadSource(url);
-            hlsInstance.attachMedia(videoElement);
+            console.log('HLS配置:', hlsConfig);
             
-            // 监听所有重要事件
-            hlsInstance.on(Hls.Events.MANIFEST_LOADING, (event, data) => {
-                console.log('HLS清单开始加载:', data.url);
-                showToast('正在加载HLS清单...', 'info');
-            });
-            
-            hlsInstance.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-                console.log('HLS清单解析成功');
-                console.log('可用质量级别:', data.levels.map(level => ({
-                    width: level.width,
-                    height: level.height,
-                    bitrate: level.bitrate
-                })));
-                showToast('HLS流解析成功，开始播放', 'success');
-                setupVideoEvents(videoElement, savedProgress);
-            });
-            
-            hlsInstance.on(Hls.Events.LEVEL_LOADING, (event, data) => {
-                console.log('HLS子级别开始加载:', data.url);
-            });
-            
-            hlsInstance.on(Hls.Events.LEVEL_LOADED, (event, data) => {
-                console.log('HLS子级别加载完成:', data.url, '片段数量:', data.details?.fragments?.length || 0);
-                if (data.details?.fragments?.length > 0) {
-                    console.log('首个片段URL:', data.details.fragments[0]?.url);
-                    showToast(`子级别加载成功，包含 ${data.details.fragments.length} 个片段`, 'success');
-                } else {
-                    console.warn('子级别加载完成但没有片段');
-                    showToast('警告：子级别没有找到视频片段', 'warning');
-                }
-            });
-            
-            hlsInstance.on(Hls.Events.FRAG_LOADING, (event, data) => {
-                console.log('片段开始加载:', data.frag?.url);
-            });
-            
-            hlsInstance.on(Hls.Events.FRAG_LOADED, (event, data) => {
-                console.log('片段加载成功:', data.frag?.url, '大小:', data.payload?.byteLength);
-            });
-            
-            hlsInstance.on(Hls.Events.FRAG_PARSED, (event, data) => {
-                console.log('片段解析完成:', data.frag?.url);
-            });
-            
-            hlsInstance.on(Hls.Events.FRAG_BUFFERED, (event, data) => {
-                console.log('片段缓冲完成:', data.frag?.url);
-            });
-            
-            hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-                console.error('HLS错误:', data);
+            try {
+                // 创建HLS实例
+                hlsInstance = new Hls(hlsConfig);
+                console.log('HLS实例创建成功');
                 
-                if (data.fatal) {
-                    let errorMessage = '';
-                    let shouldShowDialog = false;
+                // 设置媒体源
+                hlsInstance.loadSource(url);
+                console.log('HLS源设置成功');
+                
+                // 绑定媒体元素
+                hlsInstance.attachMedia(videoElement);
+                console.log('HLS媒体绑定成功');
+                
+                // 监听所有重要事件
+                hlsInstance.on(Hls.Events.MEDIA_ATTACHING, (event, data) => {
+                    console.log('📺 HLS媒体 attaching:', data);
+                });
+                
+                hlsInstance.on(Hls.Events.MEDIA_ATTACHED, (event, data) => {
+                    console.log('✅ HLS媒体 attached成功');
+                    showToast('播放器初始化成功', 'success');
+                });
+                
+                hlsInstance.on(Hls.Events.MANIFEST_LOADING, (event, data) => {
+                    console.log('📋 HLS清单开始加载:', data.url);
+                    showToast('正在加载播放列表...', 'info');
+                });
+                
+                hlsInstance.on(Hls.Events.MANIFEST_LOADED, (event, data) => {
+                    console.log('✅ HLS清单加载完成');
+                    console.log('清单内容:', data);
+                    showToast('播放列表加载完成', 'success');
+                });
+                
+                hlsInstance.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+                    console.log('✅ HLS清单解析成功');
+                    console.log('可用质量级别:', data.levels.map((level, index) => ({
+                        index: index,
+                        width: level.width,
+                        height: level.height,
+                        bitrate: level.bitrate,
+                        codec: level.codecSet
+                    })));
+                    console.log('第一级:', data.firstLevel);
+                    console.log('音轨:', data.audioTracks);
                     
-                    switch (data.type) {
-                        case Hls.ErrorTypes.NETWORK_ERROR:
-                            errorMessage = '网络错误，尝试恢复...';
-                            if (data.details === 'manifestLoadError') {
-                                console.log('清单文件加载失败，可能是代理问题');
-                                errorMessage = 'HLS清单文件加载失败';
-                                shouldShowDialog = true;
-                            } else if (data.details === 'levelLoadError') {
-                                console.log('子清单加载失败');
-                                errorMessage = 'HLS子清单文件加载失败';
-                                shouldShowDialog = true;
-                            } else if (data.details === 'fragLoadError') {
-                                console.log('片段加载失败，尝试恢复');
-                                errorMessage = '视频片段加载失败，尝试恢复...';
+                    // 检查是否有可用的级别
+                    if (!data.levels || data.levels.length === 0) {
+                        console.error('❌ 没有可用的视频级别');
+                        showToast('HLS流中没有找到可用的视频', 'error');
+                        return;
+                    }
+                    
+                    // 检查是否有可用的级别
+                    if (!data.levels || data.levels.length === 0) {
+                        console.error('❌ 没有可用的视频级别');
+                        showToast('HLS流中没有找到可用的视频', 'error');
+                        return;
+                    }
+                    
+                    showToast('HLS流解析成功，开始播放', 'success');
+                    
+                    // 设置视频事件
+                    setupVideoEvents(videoElement, savedProgress);
+                    
+                    // 确保视频元素的控制面板显示
+                    if (videoElement) {
+                        videoElement.controls = true;
+                    }
+                    
+                // 自动播放 - 延迟一点时间确保片段加载
+                setTimeout(() => {
+                    if (videoElement && videoElement.paused) {
+                        console.log('🎬 尝试自动播放...');
+                        const playPromise = videoElement.play();
+                        if (playPromise !== undefined) {
+                            playPromise.then(() => {
+                                console.log('✅ 自动播放成功');
+                                showToast('视频开始播放', 'success');
+                            }).catch(err => {
+                                console.warn('⚠️ 自动播放失败，需要用户交互:', err);
+                                showToast('点击播放按钮开始播放', 'info');
+                                
+                                // 添加一个点击播放的提示
+                                addPlayButtonOverlay(videoElement);
+                            });
+                        } else {
+                            // 兼容旧浏览器
+                            try {
+                                videoElement.play();
+                                console.log('✅ 自动播放成功（兼容模式）');
+                                showToast('视频开始播放', 'success');
+                            } catch (err) {
+                                console.warn('⚠️ 自动播放失败（兼容模式），需要用户交互:', err);
+                                showToast('点击播放按钮开始播放', 'info');
+                                
+                                // 添加一个点击播放的提示
+                                addPlayButtonOverlay(videoElement);
+                            }
+                        }
+                    } else {
+                        console.log('🎬 视频已经在播放状态');
+                    }
+                }, 3000); // 增加延迟时间，确保片段加载完成
+                });
+                
+                hlsInstance.on(Hls.Events.LEVEL_LOADING, (event, data) => {
+                    console.log('🔄 HLS子级别开始加载:', data.url, '级别:', data.level);
+                });
+                
+                hlsInstance.on(Hls.Events.LEVEL_LOADED, (event, data) => {
+                    console.log('✅ HLS子级别加载完成:', data.url, '级别:', data.level);
+                    console.log('片段数量:', data.details?.fragments?.length || 0);
+                    if (data.details?.fragments?.length > 0) {
+                        console.log('首个片段URL:', data.details.fragments[0]?.url);
+                        console.log('总时长:', data.details.totalduration);
+                        showToast(`子级别加载成功，包含 ${data.details.fragments.length} 个片段`, 'success');
+                    } else {
+                        console.warn('⚠️ 子级别加载完成但没有片段');
+                        showToast('警告：子级别没有找到视频片段', 'warning');
+                    }
+                });
+                
+                hlsInstance.on(Hls.Events.FRAG_LOADING, (event, data) => {
+                    console.log('🔄 片段开始加载:', data.frag?.url, '级别:', data.frag?.level);
+                });
+                
+                hlsInstance.on(Hls.Events.FRAG_LOADED, (event, data) => {
+                    console.log('✅ 片段加载成功:', data.frag?.url, '大小:', data.payload?.byteLength, '字节');
+                });
+                
+                hlsInstance.on(Hls.Events.FRAG_PARSED, (event, data) => {
+                    console.log('✅ 片段解析完成:', data.frag?.url);
+                });
+                
+                hlsInstance.on(Hls.Events.FRAG_BUFFERED, (event, data) => {
+                    console.log('✅ 片段缓冲完成:', data.frag?.url);
+                });
+                
+                hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+                    console.error('❌ HLS错误:', data);
+                    console.error('错误详情:', {
+                        type: data.type,
+                        details: data.details,
+                        fatal: data.fatal,
+                        reason: data.reason,
+                        url: data.url,
+                        code: data.code
+                    });
+                    
+                    if (data.fatal) {
+                        let errorMessage = '';
+                        let shouldShowDialog = false;
+                        
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                errorMessage = '网络错误，尝试恢复...';
+                                if (data.details === 'manifestLoadError') {
+                                    console.log('❌ 清单文件加载失败，可能是代理问题');
+                                    errorMessage = 'HLS清单文件加载失败';
+                                    shouldShowDialog = true;
+                                } else if (data.details === 'levelLoadError') {
+                                    console.log('❌ 子清单加载失败');
+                                    errorMessage = 'HLS子清单文件加载失败';
+                                    shouldShowDialog = true;
+                                } else if (data.details === 'fragLoadError') {
+                                    console.log('❌ 片段加载失败，尝试恢复');
+                                    errorMessage = '视频片段加载失败，尝试恢复...';
+                                    showToast(errorMessage, 'warning');
+                                    
+                                    // 尝试恢复片段加载错误
+                                    setTimeout(() => {
+                                        if (hlsInstance) {
+                                            console.log('🔄 尝试恢复片段加载...');
+                                            hlsInstance.startLoad();
+                                        }
+                                    }, 1000);
+                                    return;
+                                }
+                                
+                                if (shouldShowDialog) {
+                                    showHLSErrorDialog(currentEpisode, {
+                                        errorType: data.type,
+                                        errorCode: data.code,
+                                        errorDetails: data.details,
+                                        message: data.reason || data.details || errorMessage,
+                                        url: data.url
+                                    });
+                                } else {
+                                    showToast(errorMessage, 'warning');
+                                    
+                                    // 尝试恢复网络错误
+                                    setTimeout(() => {
+                                        if (hlsInstance) {
+                                            console.log('🔄 尝试恢复网络错误...');
+                                            hlsInstance.startLoad();
+                                        }
+                                    }, 1000);
+                                }
+                                break;
+                                
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                errorMessage = '媒体错误，尝试恢复...';
                                 showToast(errorMessage, 'warning');
                                 
-                                // 尝试恢复片段加载错误
+                                // 尝试恢复媒体错误
                                 setTimeout(() => {
                                     if (hlsInstance) {
-                                        hlsInstance.startLoad();
+                                        console.log('🔄 尝试恢复媒体错误...');
+                                        hlsInstance.recoverMediaError();
                                     }
+                                }, 1000);
+                                break;
+                                
+                            default:
+                                shouldShowDialog = true;
+                                break;
+                        }
+                        
+                        // 如果是代理相关错误，尝试直连播放
+                        if ((data.details === 'manifestLoadError' || data.details === 'levelLoadError') && 
+                            data.url && data.url.includes('/proxy/')) {
+                            console.log('🔄 代理加载失败，尝试直连播放');
+                            showToast('代理加载失败，正在尝试直连播放...', 'warning');
+                            // 从代理URL中提取原始URL
+                            const urlMatch = data.url.match(/\/proxy\/video\?url=([^&]+)/);
+                            if (urlMatch) {
+                                const originalUrl = decodeURIComponent(urlMatch[1]);
+                                setTimeout(() => {
+                                    tryDirectHLSPlay(originalUrl);
                                 }, 1000);
                                 return;
                             }
-                            
-                            if (shouldShowDialog) {
-                                showHLSErrorDialog(currentEpisode, {
-                                    errorType: data.type,
-                                    errorCode: data.code,
-                                    errorDetails: data.details,
-                                    message: data.reason || data.details || errorMessage,
-                                    url: data.url
-                                });
-                            } else {
-                                showToast(errorMessage, 'warning');
-                                
-                                // 尝试恢复网络错误
-                                setTimeout(() => {
-                                    if (hlsInstance) {
-                                        hlsInstance.startLoad();
-                                    }
-                                }, 1000);
-                            }
-                            break;
-                            
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            errorMessage = '媒体错误，尝试恢复...';
-                            showToast(errorMessage, 'warning');
-                            
-                            // 尝试恢复媒体错误
-                            setTimeout(() => {
-                                if (hlsInstance) {
-                                    hlsInstance.recoverMediaError();
-                                }
-                            }, 1000);
-                            break;
-                            
-                        default:
-                            shouldShowDialog = true;
-                            break;
-                    }
-                    
-                    // 如果是代理相关错误，尝试直连播放
-                    if ((data.details === 'manifestLoadError' || data.details === 'levelLoadError') && 
-                        data.url && data.url.includes('/proxy/')) {
-                        console.log('代理加载失败，尝试直连播放');
-                        showToast('代理加载失败，正在尝试直连播放...', 'warning');
-                        // 从代理URL中提取原始URL
-                        const urlMatch = data.url.match(/\/proxy\/video\?url=([^&]+)/);
-                        if (urlMatch) {
-                            const originalUrl = decodeURIComponent(urlMatch[1]);
-                            setTimeout(() => {
-                                tryDirectHLSPlay(originalUrl);
-                            }, 1000);
-                            return;
                         }
+                        
+                        // 如果多次恢复失败，显示错误对话框
+                        if (shouldShowDialog || data.details === 'levelLoadTimeOut' || data.details === 'fragLoadTimeOut') {
+                            showHLSErrorDialog(currentEpisode, {
+                                errorType: data.type,
+                                errorCode: data.code,
+                                errorDetails: data.details,
+                                message: data.reason || data.details || 'HLS播放失败',
+                                url: data.url
+                            });
+                        }
+                    } else {
+                        // 非致命错误，记录但继续播放
+                        console.warn('⚠️ HLS非致命错误:', data);
                     }
-                    
-                    // 如果多次恢复失败，显示错误对话框
-                    if (shouldShowDialog || data.details === 'levelLoadTimeOut' || data.details === 'fragLoadTimeOut') {
-                        showHLSErrorDialog(currentEpisode, {
-                            errorType: data.type,
-                            errorCode: data.code,
-                            errorDetails: data.details,
-                            message: data.reason || data.details || 'HLS播放失败',
-                            url: data.url
-                        });
-                    }
-                } else {
-                    // 非致命错误，记录但继续播放
-                    console.warn('HLS非致命错误:', data);
-                }
-            });
-            
-            // 监听缓冲状态
-            hlsInstance.on(Hls.Events.BUFFER_APPENDING, () => {
-                console.log('开始添加数据到缓冲区');
-            });
-            
-            hlsInstance.on(Hls.Events.BUFFER_APPENDED, () => {
-                console.log('数据已添加到缓冲区');
-            });
-            
-            // 监听首帧渲染
-            hlsInstance.on(Hls.Events.INIT_PTS_FOUND, () => {
-                console.log('找到初始时间戳，即将开始播放');
-                showToast('视频即将开始播放...', 'info');
-            });
+                });
+                
+                // 监听缓冲状态
+                hlsInstance.on(Hls.Events.BUFFER_APPENDING, () => {
+                    console.log('📥 开始添加数据到缓冲区');
+                });
+                
+                hlsInstance.on(Hls.Events.BUFFER_APPENDED, () => {
+                    console.log('✅ 数据已添加到缓冲区');
+                });
+                
+                hlsInstance.on(Hls.Events.BUFFER_EOS, () => {
+                    console.log('🏁 缓冲区到达末尾');
+                });
+                
+                // 监听首帧渲染
+                hlsInstance.on(Hls.Events.INIT_PTS_FOUND, () => {
+                    console.log('🎬 找到初始时间戳，即将开始播放');
+                    showToast('视频即将开始播放...', 'info');
+                });
+                
+                console.log('✅ HLS播放器初始化完成');
+                
+            } catch (error) {
+                console.error('❌ HLS播放器初始化失败:', error);
+                showToast('播放器初始化失败: ' + error.message, 'error');
+                
+                // 尝试降级到Video.js
+                setTimeout(() => {
+                    initVideoJSPlayer(url, videoElement, savedProgress, true);
+                }, 1000);
+            }
         }
         
         // 初始化原生HLS播放器 (Safari)
@@ -1638,7 +1844,130 @@
                 return `${secs}秒`;
             }
         }
+        
+        // 添加播放按钮覆盖层
+        function addPlayButtonOverlay(videoElement) {
+            // 检查是否已经存在播放按钮覆盖层
+            const existingOverlay = document.getElementById('playButtonOverlay');
+            if (existingOverlay) {
+                return; // 已存在，不再添加
+            }
+            
+            // 获取视频播放器容器
+            const videoPlayer = document.getElementById('videoPlayer');
+            if (!videoPlayer) return;
+            
+            // 创建覆盖层
+            const overlay = document.createElement('div');
+            overlay.id = 'playButtonOverlay';
+            overlay.className = 'absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20';
+            overlay.style.cursor = 'pointer';
+            
+            // 创建播放按钮
+            const playButton = document.createElement('div');
+            playButton.className = 'w-20 h-20 bg-white bg-opacity-80 rounded-full flex items-center justify-center hover:bg-opacity-100 transition-all';
+            playButton.innerHTML = '<i class="fa fa-play text-3xl text-primary ml-1"></i>';
+            
+            // 创建提示文本
+            const hintText = document.createElement('div');
+            hintText.className = 'absolute bottom-10 text-white text-lg font-medium';
+            hintText.textContent = '点击播放视频';
+            
+            // 组装覆盖层
+            overlay.appendChild(playButton);
+            overlay.appendChild(hintText);
+            videoPlayer.appendChild(overlay);
+            
+            // 添加点击事件
+            overlay.addEventListener('click', () => {
+                // 尝试播放视频
+                if (videoElement && videoElement.paused) {
+                    const playPromise = videoElement.play();
+                    if (playPromise !== undefined) {
+                        playPromise.then(() => {
+                            console.log('✅ 手动播放成功');
+                            showToast('视频开始播放', 'success');
+                            // 移除覆盖层
+                            if (overlay.parentNode) {
+                                overlay.parentNode.removeChild(overlay);
+                            }
+                        }).catch(err => {
+                            console.error('❌ 手动播放失败:', err);
+                            showToast('播放失败，请刷新页面重试', 'error');
+                            
+                            // 添加一个简单的播放按钮到视频元素上
+                            addSimplePlayButton(videoElement);
+                        });
+                    } else {
+                        // 兼容旧浏览器
+                        try {
+                            videoElement.play();
+                            console.log('✅ 手动播放成功（兼容模式）');
+                            showToast('视频开始播放', 'success');
+                            // 移除覆盖层
+                            if (overlay.parentNode) {
+                                overlay.parentNode.removeChild(overlay);
+                            }
+                        } catch (err) {
+                            console.error('❌ 手动播放失败（兼容模式）:', err);
+                            showToast('播放失败，请刷新页面重试', 'error');
+                            
+                            // 添加一个简单的播放按钮到视频元素上
+                            addSimplePlayButton(videoElement);
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 添加简单播放按钮（备用方案）
+        function addSimplePlayButton(videoElement) {
+            // 移除现有的简单播放按钮
+            const existingBtn = document.getElementById('simplePlayButton');
+            if (existingBtn) {
+                existingBtn.remove();
+            }
+            
+            // 创建简单的播放按钮
+            const playBtn = document.createElement('button');
+            playBtn.id = 'simplePlayButton';
+            playBtn.innerHTML = '<i class="fa fa-play"></i> 点击播放';
+            playBtn.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-primary text-white px-6 py-3 rounded-lg hover:bg-primary/90 transition-all z-30';
+            
+            // 添加到视频播放器容器
+            const videoPlayer = document.getElementById('videoPlayer');
+            if (videoPlayer) {
+                videoPlayer.appendChild(playBtn);
+                
+                // 添加点击事件
+                playBtn.addEventListener('click', () => {
+                    if (videoElement && videoElement.paused) {
+                        const playPromise = videoElement.play();
+                        if (playPromise !== undefined) {
+                            playPromise.then(() => {
+                                console.log('✅ 简单按钮播放成功');
+                                showToast('视频开始播放', 'success');
+                                playBtn.remove();
+                            }).catch(err => {
+                                console.error('❌ 简单按钮播放失败:', err);
+                                showToast('播放仍然失败，请检查控制台错误', 'error');
+                            });
+                        } else {
+                            // 兼容旧浏览器
+                            try {
+                                videoElement.play();
+                                console.log('✅ 简单按钮播放成功（兼容模式）');
+                                showToast('视频开始播放', 'success');
+                                playBtn.remove();
+                            } catch (err) {
+                                console.error('❌ 简单按钮播放失败（兼容模式）:', err);
+                                showToast('播放仍然失败，请检查控制台错误', 'error');
+                            }
+                        }
+                    }
+                });
+            }
+        }
     </script>
 </body>
 </html>
-    
