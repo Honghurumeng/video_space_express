@@ -1121,12 +1121,9 @@
                         return;
                     }
                     
-                    // 检查是否有可用的级别
-                    if (!data.levels || data.levels.length === 0) {
-                        console.error('❌ 没有可用的视频级别');
-                        showToast('HLS流中没有找到可用的视频', 'error');
-                        return;
-                    }
+                    // 🚀 启用并发预加载功能
+                    console.log('🚀 开始并发预加载HLS片段...');
+                    prefetchHLSSegments(url, data);
                     
                     // showToast('HLS流解析成功，开始播放', 'success');
                     
@@ -2125,6 +2122,98 @@
         function getLastWatchedEpisodeId(videoId) {
             const lastWatched = JSON.parse(localStorage.getItem('lastWatched') || '{}');
             return lastWatched[videoId] ? lastWatched[videoId].episodeId : null;
+        }
+
+        // 🚀 并发预加载HLS片段函数
+        async function prefetchHLSSegments(manifestUrl, manifestData) {
+            try {
+                console.log('🚀 开始并发预加载HLS片段...');
+                
+                // 从manifest URL中提取基础URL
+                const manifestUrlObj = new URL(manifestUrl);
+                const baseUrl = manifestUrlObj.substring(0, manifestUrlObj.lastIndexOf('/') + 1);
+                
+                // 收集需要预加载的片段URL
+                const segmentsToPrefetch = [];
+                
+                // 从manifestData中提取片段信息
+                if (manifestData.levels && manifestData.levels.length > 0) {
+                    // 选择第一个质量级别的片段
+                    const firstLevel = manifestData.levels[0];
+                    if (firstLevel.details && firstLevel.details.fragments) {
+                        const fragments = firstLevel.details.fragments.slice(0, 5); // 预加载前5个片段
+                        fragments.forEach(fragment => {
+                            if (fragment.url) {
+                                segmentsToPrefetch.push(fragment.url);
+                            }
+                        });
+                    }
+                }
+                
+                if (segmentsToPrefetch.length === 0) {
+                    console.log('📋 没有找到需要预加载的片段');
+                    return;
+                }
+                
+                console.log(`📦 预加载 ${segmentsToPrefetch.length} 个片段:`, segmentsToPrefetch);
+                
+                // 发送预加载请求到服务器
+                const response = await fetch('/performance/prefetch', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        segments: segmentsToPrefetch,
+                        baseUrl: baseUrl
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    console.log(`✅ 并发预加载完成: ${result.successful}/${result.totalRequested} 成功`);
+                    showToast(`预加载完成: ${result.successful}/${result.totalRequested} 个片段`, 'success');
+                } else {
+                    console.error('❌ 并发预加载失败:', result.error);
+                    showToast('预加载失败', 'error');
+                }
+                
+            } catch (error) {
+                console.error('❌ 并发预加载出错:', error);
+                // 不显示错误提示，因为这只是优化功能
+            }
+        }
+
+        // 📊 性能监控函数
+        async function checkPerformanceStats() {
+            try {
+                const response = await fetch('/performance/stats');
+                const stats = await response.json();
+                
+                console.log('📊 性能统计:', stats);
+                
+                // 可以在这里添加性能统计的UI显示
+                const statsHtml = `
+                    <div class="bg-white rounded-lg p-4 mb-4">
+                        <h4 class="font-bold mb-2">📊 性能统计</h4>
+                        <div class="text-sm space-y-1">
+                            <div>缓存命中率: ${stats.cache.hitRate.toFixed(2)}%</div>
+                            <div>缓存项数: ${stats.cache.items}</div>
+                            <div>连接使用率: ${stats.connections.utilizationRate}</div>
+                            <div>活动连接: ${stats.connections.activeConnections}/${stats.connections.maxConnections}</div>
+                            <div>内存使用: ${(stats.system.memoryUsage.heapUsed / 1024 / 1024).toFixed(2)}MB</div>
+                        </div>
+                    </div>
+                `;
+                
+                // 可以选择显示在页面上
+                return stats;
+                
+            } catch (error) {
+                console.error('❌ 获取性能统计失败:', error);
+                return null;
+            }
         }
     </script>
 </body>

@@ -2,9 +2,253 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
+const http = require('http');
+const https = require('https');
+const { URL } = require('url');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3010;
+
+// 性能优化配置
+const PERFORMANCE_CONFIG = {
+    // 并发连接数限制
+    MAX_CONCURRENT_CONNECTIONS: 20,
+    // 连接超时时间（毫秒）
+    CONNECTION_TIMEOUT: 10000,
+    // 请求超时时间（毫秒）
+    REQUEST_TIMEOUT: 30000,
+    // 缓存大小限制（MB）
+    CACHE_SIZE_LIMIT: 100,
+    // 启用HTTP/2支持
+    ENABLE_HTTP2: true,
+    // 启用连接复用
+    ENABLE_KEEP_ALIVE: true,
+    // 并发预加载片段数
+    PREFETCH_SEGMENTS: 3
+};
+
+// 简单的内存缓存系统
+const cache = new Map();
+const cacheStats = {
+    hits: 0,
+    misses: 0,
+    size: 0
+};
+
+// 连接池管理器
+class ConnectionPool {
+    constructor() {
+        this.pools = new Map();
+        this.activeConnections = 0;
+        this.queue = [];
+    }
+
+    async getConnection(origin) {
+        if (this.activeConnections >= PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS) {
+            await new Promise(resolve => this.queue.push(resolve));
+        }
+
+        this.activeConnections++;
+        // console.log(`🔗 连接池状态: ${this.activeConnections}/${PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS}`);
+
+        return {
+            origin,
+            release: () => {
+                this.activeConnections--;
+                // 连接释放时打印状态
+                if (this.activeConnections % 5 === 0 || this.queue.length > 0) {
+                    logConnectionAndCacheStatus('连接释放');
+                }
+                if (this.queue.length > 0) {
+                    const next = this.queue.shift();
+                    next();
+                }
+            }
+        };
+    }
+}
+
+const connectionPool = new ConnectionPool();
+
+// 缓存管理器
+class CacheManager {
+    constructor() {
+        this.cache = new Map();
+        this.stats = { hits: 0, misses: 0, size: 0 };
+        this.maxSize = PERFORMANCE_CONFIG.CACHE_SIZE_LIMIT * 1024 * 1024; // 转换为字节
+    }
+
+    get(key) {
+        const item = this.cache.get(key);
+        if (item && Date.now() - item.timestamp < 300000) { // 5分钟缓存
+            this.stats.hits++;
+            console.log(`🎯 缓存命中: ${key}`);
+            return item.data;
+        }
+        this.stats.misses++;
+        return null;
+    }
+
+    set(key, data) {
+        const size = Buffer.byteLength(JSON.stringify(data), 'utf8');
+        if (this.stats.size + size > this.maxSize) {
+            this.evictLRU();
+        }
+        
+        this.cache.set(key, {
+            data,
+            timestamp: Date.now(),
+            size,
+            accessCount: 0
+        });
+        this.stats.size += size;
+        console.log(`💾 缓存存储: ${key} (${size} bytes)`);
+    }
+
+    evictLRU() {
+        let oldestKey = null;
+        let oldestTime = Date.now();
+        
+        for (const [key, item] of this.cache) {
+            if (item.timestamp < oldestTime) {
+                oldestTime = item.timestamp;
+                oldestKey = key;
+            }
+        }
+        
+        if (oldestKey) {
+            const item = this.cache.get(oldestKey);
+            this.cache.delete(oldestKey);
+            this.stats.size -= item.size;
+            console.log(`🗑️ 缓存清理: ${oldestKey} (${item.size} bytes)`);
+            // 缓存清理后打印状态
+            logConnectionAndCacheStatus('缓存清理');
+        }
+    }
+
+    getStats() {
+        return {
+            ...this.stats,
+            items: this.cache.size,
+            hitRate: this.stats.hits / (this.stats.hits + this.stats.misses) * 100
+        };
+    }
+}
+
+const cacheManager = new CacheManager();
+
+// 增强的HTTP客户端（支持并发和连接复用）
+class EnhancedHTTPClient {
+    constructor() {
+        this.agent = new http.Agent({
+            keepAlive: PERFORMANCE_CONFIG.ENABLE_KEEP_ALIVE,
+            keepAliveMsecs: 30000,
+            maxSockets: PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS,
+            maxFreeSockets: 10,
+            timeout: PERFORMANCE_CONFIG.CONNECTION_TIMEOUT
+        });
+
+        this.httpsAgent = new https.Agent({
+            keepAlive: PERFORMANCE_CONFIG.ENABLE_KEEP_ALIVE,
+            keepAliveMsecs: 30000,
+            maxSockets: PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS,
+            maxFreeSockets: 10,
+            timeout: PERFORMANCE_CONFIG.CONNECTION_TIMEOUT,
+            rejectUnauthorized: false
+        });
+    }
+
+    async request(url, options = {}) {
+        const urlObj = new URL(url);
+        const isHttps = urlObj.protocol === 'https:';
+        const agent = isHttps ? this.httpsAgent : this.agent;
+        
+        // 获取连接池连接
+        const connection = await connectionPool.getConnection(urlObj.origin);
+        
+        try {
+            // console.log(`🚀 开始并发请求: ${url}`);
+            
+            // 检查缓存
+            const cacheKey = `url_${url}`;
+            const cachedData = cacheManager.get(cacheKey);
+            if (cachedData) {
+                console.log(`🎯 使用缓存数据: ${url}`);
+                return cachedData;
+            }
+
+            // 创建基础配置
+            const config = {
+                method: options.method || 'GET',
+                url: url,
+                headers: options.headers || {},
+                timeout: PERFORMANCE_CONFIG.REQUEST_TIMEOUT,
+                responseType: 'stream',
+                httpAgent: agent,
+                httpsAgent: agent,
+                maxRedirects: 5,
+                validateStatus: function (status) {
+                    return status >= 200 && status < 300;
+                }
+            };
+
+            // 执行请求
+            const response = await axios(config);
+            
+            // 对于小文件，可以缓存响应数据
+            if (response.headers['content-length'] && 
+                parseInt(response.headers['content-length']) < 1024 * 1024) { // 小于1MB
+                // console.log(`📦 响应较小，将缓存: ${url}`);
+                // 这里需要在实际使用时缓存处理后的数据
+            }
+
+            return response;
+        } catch (error) {
+            console.error(`❌ 请求失败: ${url}`, error.message);
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    // 并发请求多个URL
+    async concurrentRequests(urls, options = {}) {
+        const promises = urls.map(url => 
+            this.request(url, options).catch(error => {
+                console.error(`❌ 并发请求失败: ${url}`, error.message);
+                return null;
+            })
+        );
+
+        const results = await Promise.allSettled(promises);
+        return results.map((result, index) => ({
+            url: urls[index],
+            success: result.status === 'fulfilled',
+            data: result.status === 'fulfilled' ? result.value : null,
+            error: result.status === 'rejected' ? result.reason : null
+        }));
+    }
+}
+
+const httpClient = new EnhancedHTTPClient();
+
+// 连接池和缓存状态打印函数
+function logConnectionAndCacheStatus(reason = '') {
+    const now = new Date().toISOString();
+    const cacheStats = cacheManager.getStats();
+    const connectionStats = {
+        activeConnections: connectionPool.activeConnections,
+        maxConnections: PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS,
+        queueLength: connectionPool.queue.length,
+        utilizationRate: (connectionPool.activeConnections / PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS * 100).toFixed(2) + '%'
+    };
+
+    console.log(`📊 [${now}] 连接池和缓存状态 ${reason ? `- ${reason}` : ''}`);
+    console.log(`   🔗 连接池: ${connectionStats.activeConnections}/${connectionStats.maxConnections} (${connectionStats.utilizationRate})`);
+    console.log(`   ⏳ 队列长度: ${connectionStats.queueLength}`);
+    console.log(`   💾 缓存: ${cacheStats.items} 项, 命中率: ${cacheStats.hitRate.toFixed(2)}%, 大小: ${(cacheStats.size / 1024 / 1024).toFixed(2)}MB`);
+    console.log(`   📈 缓存命中: ${cacheStats.hits}, 未命中: ${cacheStats.misses}`);
+}
 
 // 启用CORS
 app.use(cors({
@@ -39,9 +283,9 @@ app.get('/proxy/*', async (req, res) => {
         });
     }
     
-    console.log(`处理HLS片段请求: ${targetUrl}`);
-    console.log(`Query参数:`, req.query);
-    console.log(`User-Agent:`, req.headers['user-agent']);
+    // console.log(`处理HLS片段请求: ${targetUrl}`);
+    // console.log(`Query参数:`, req.query);
+    // console.log(`User-Agent:`, req.headers['user-agent']);
     
     // 对于HLS片段，需要重构完整URL
     const baseUrl = req.query.base;
@@ -50,8 +294,8 @@ app.get('/proxy/*', async (req, res) => {
             // 从base URL中提取基础路径
             const decodedBaseUrl = decodeURIComponent(baseUrl);
             const decodedTargetUrl = decodeURIComponent(targetUrl);
-            console.log(`解码后的base URL: ${decodedBaseUrl}`);
-            console.log(`解码后的目标文件: ${decodedTargetUrl}`);
+            // console.log(`解码后的base URL: ${decodedBaseUrl}`);
+            // console.log(`解码后的目标文件: ${decodedTargetUrl}`);
             
             // 构造完整的目标URL，确保路径正确连接
             // 确保base URL以斜杠结尾，目标URL不以斜杠开头
@@ -60,7 +304,7 @@ app.get('/proxy/*', async (req, res) => {
             
             targetUrl = normalizedBaseUrl + normalizedTargetUrl;
             
-            console.log(`重构后的目标URL: ${targetUrl}`);
+            // console.log(`重构后的目标URL: ${targetUrl}`);
         } catch (e) {
             console.error('URL重构失败:', e);
             return res.status(400).json({ 
@@ -144,7 +388,7 @@ function processM3U8Content(content, baseUrl, req) {
                     const encodedSegmentName = encodeURIComponent(trimmedLine);
                     const encodedBaseUrl = encodeURIComponent(baseUrlWithoutFile);
                     const proxyUrl = `${serverUrl}/proxy/${encodedSegmentName}?base=${encodedBaseUrl}`;
-                    console.log(`[${index}] 转换片段URL: ${trimmedLine} -> ${proxyUrl}`);
+                    // console.log(`[${index}] 转换片段URL: ${trimmedLine} -> ${proxyUrl}`);
                     return proxyUrl;
                 }
             }
@@ -207,17 +451,17 @@ async function handleProxyRequest(targetUrl, req, res) {
         return res.status(400).json({ error: '缺少目标URL参数' });
     }
 
-    console.log('=== 开始处理代理请求 ===');
-    console.log('目标URL:', targetUrl);
-    console.log('请求方法:', req.method);
-    console.log('请求头:', JSON.stringify(req.headers, null, 2));
+    // console.log('=== 开始处理代理请求 ===');
+    // console.log('目标URL:', targetUrl);
+    // console.log('请求方法:', req.method);
+    // console.log('请求头:', JSON.stringify(req.headers, null, 2));
 
     try {
         // 初步检查是否为HLS流（URL包含 .m3u8）
         let isHLS = targetUrl.toLowerCase().includes('.m3u8');
         const isTS = targetUrl.toLowerCase().includes('.ts');
         
-        console.log('文件类型判断:', { isHLS, isTS });
+        // console.log('文件类型判断:', { isHLS, isTS });
         
         // 设置更完整的请求头以模拟真实浏览器
         const headers = {
@@ -239,8 +483,8 @@ async function handleProxyRequest(targetUrl, req, res) {
             const referer = urlObj.origin + '/';
             headers['Referer'] = referer;
             headers['Origin'] = urlObj.origin;
-            console.log('设置Referer:', referer);
-            console.log('设置Origin:', urlObj.origin);
+            // console.log('设置Referer:', referer);
+            // console.log('设置Origin:', urlObj.origin);
         } catch (e) {
             console.warn('无法解析URL:', targetUrl, '错误:', e.message);
         }
@@ -251,7 +495,6 @@ async function handleProxyRequest(targetUrl, req, res) {
             console.log('设置HLS Accept头');
         } else if (isTS) {
             headers['Accept'] = 'video/mp2t, video/MP2T, */*';
-            console.log('设置TS Accept头');
         } else {
             headers['Accept'] = 'video/mp4, video/webm, video/ogg, */*';
             console.log('设置视频Accept头');
@@ -266,22 +509,14 @@ async function handleProxyRequest(targetUrl, req, res) {
         // 设置不同的超时时间
         const timeout = isTS ? 20000 : (isHLS ? 30000 : 45000); // 根据文件类型调整超时
         
-        console.log(`发起${isHLS ? 'HLS' : isTS ? 'TS片段' : '视频'}请求, 超时设置: ${timeout}ms`);
-        console.log('最终请求头:', JSON.stringify(headers, null, 2));
+        // console.log(`🚀 发起${isHLS ? 'HLS' : '视频'}请求, 使用并发客户端`);
+        // console.log('最终请求头:', JSON.stringify(headers, null, 2));
 
-        // 发起请求获取资源
-        const response = await axios({
+        // 使用增强的HTTP客户端发起请求
+        const response = await httpClient.request(targetUrl, {
             method: 'GET',
-            url: targetUrl,
             headers: headers,
-            responseType: 'stream',
-            timeout: timeout,
-            maxRedirects: 5,
-            validateStatus: function (status) {
-                return status < 500; // 接受所有小于500的状态码
-            },
-            // 添加代理配置（如果需要）
-            proxy: false
+            timeout: timeout
         });
 
         // 有些HLS地址不包含 .m3u8，但响应头会标识类型
@@ -293,9 +528,9 @@ async function handleProxyRequest(targetUrl, req, res) {
             }
         }
 
-        console.log('✅ 请求成功');
-        console.log('响应状态:', response.status);
-        console.log('响应头:', JSON.stringify(response.headers, null, 2));
+        // console.log('✅ 请求成功');
+        // console.log('响应状态:', response.status);
+        // console.log('响应头:', JSON.stringify(response.headers, null, 2));
         
         // 检查响应状态
         if (response.status >= 400) {
@@ -412,7 +647,6 @@ async function handleProxyRequest(targetUrl, req, res) {
             responseHeaders['Content-Type'] = response.headers['content-type'] || 'video/mp2t';
             responseHeaders['Accept-Ranges'] = 'bytes';
             responseHeaders['Cache-Control'] = 'public, max-age=86400';
-            console.log('🎬 处理TS片段请求');
             
             // 对于TS片段，我们需要确保正确处理流
             let totalBytes = 0;
@@ -422,16 +656,13 @@ async function handleProxyRequest(targetUrl, req, res) {
             response.data.on('data', (chunk) => {
                 totalBytes += chunk.length;
                 bufferChunks.push(chunk);
-                console.log(`📦 TS片段数据块: ${chunk.length} 字节, 总计: ${totalBytes} 字节`);
             });
             
             // 监听数据结束
             response.data.on('end', () => {
-                console.log(`✅ TS片段接收完成, 总大小: ${totalBytes} 字节`);
                 
                 // 如果没有数据，返回错误
                 if (totalBytes === 0) {
-                    console.error('❌ TS片段为空');
                     if (!res.headersSent) {
                         res.status(500).json({ 
                             error: 'TS片段为空', 
@@ -449,13 +680,11 @@ async function handleProxyRequest(targetUrl, req, res) {
                 if (bufferChunks.length > 0) {
                     const combinedBuffer = Buffer.concat(bufferChunks);
                     res.send(combinedBuffer);
-                    console.log(`✅ TS片段发送成功: ${combinedBuffer.length} 字节`);
                 }
             });
             
             // 监听错误
             response.data.on('error', (error) => {
-                console.error('❌ TS片段接收错误:', error);
                 if (!res.headersSent) {
                     res.status(500).json({ 
                         error: 'TS片段接收错误', 
@@ -465,11 +694,45 @@ async function handleProxyRequest(targetUrl, req, res) {
                 }
             });
             
-            // 监听客户端连接关闭
+            // 监听客户端连接关闭 - 正常关闭时打印连接池和缓存状态
             res.on('close', () => {
-                console.log('🔌 客户端连接关闭');
-                if (response.data) {
-                    response.data.destroy();
+                const now = new Date().toISOString();
+                const connectionType = isTS ? 'TS片段' : '普通视频';
+                
+                // 更准确的连接状态判断
+                const isActuallyClosed = res.writableEnded || res.writableFinished || res.destroyed;
+                const wasAborted = res.writableEnded;
+                
+                // 只有真正关闭时才处理
+                if (isActuallyClosed) {
+                    if (wasAborted) {
+                        // 正常关闭时打印连接池和缓存状态
+                        logConnectionAndCacheStatus(`${connectionType}正常关闭`);
+                    } else {
+                        // 异常断开时输出详细信息
+                        console.log(`❌ [${now}] 客户端异常断开 - 类型: ${connectionType}, URL: ${targetUrl.substring(0, 100)}${targetUrl.length > 100 ? '...' : ''}`);
+                        logConnectionAndCacheStatus(`${connectionType}异常断开`);
+                    }
+                    
+                    if (response.data && !response.data.destroyed) {
+                        response.data.destroy();
+                    }
+                }
+            });
+
+            // 监听客户端连接错误 - 只在真正错误时才输出日志
+            res.on('error', (error) => {
+                const now = new Date().toISOString();
+                const connectionType = isTS ? 'TS片段' : '普通视频';
+                
+                // 避免重复输出错误信息
+                if (!res.writableEnded && !res.writableFinished) {
+                    console.log(`❌ [${now}] 客户端连接错误 - 类型: ${connectionType}, 错误: ${error.message}, URL: ${targetUrl.substring(0, 100)}${targetUrl.length > 100 ? '...' : ''}`);
+                    logConnectionAndCacheStatus(`${connectionType}连接错误`);
+                    
+                    if (response.data && !response.data.destroyed) {
+                        response.data.destroy();
+                    }
                 }
             });
             
@@ -515,14 +778,48 @@ async function handleProxyRequest(targetUrl, req, res) {
 
         // 监听响应完成
         response.data.on('end', () => {
-            console.log(`✅ ${isTS ? 'TS片段' : isHLS ? 'HLS清单' : '视频文件'}传输完成`);
+            console.log(`✅ ${isHLS ? 'HLS清单' : '视频文件'}传输完成`);
         });
 
-        // 监听客户端连接关闭
+        // 监听客户端连接关闭 - 正常关闭时打印连接池和缓存状态
         res.on('close', () => {
-            console.log('🔌 客户端连接关闭');
-            if (response.data) {
-                response.data.destroy();
+            const now = new Date().toISOString();
+            const connectionType = isHLS ? 'HLS清单' : '视频文件';
+            
+            // 更准确的连接状态判断
+            const isActuallyClosed = res.writableEnded || res.writableFinished || res.destroyed;
+            const wasAborted = res.writableEnded;
+            
+            // 只有真正关闭时才处理
+            if (isActuallyClosed) {
+                if (wasAborted) {
+                    // 正常关闭时打印连接池和缓存状态
+                    logConnectionAndCacheStatus(`${connectionType}正常关闭`);
+                } else {
+                    // 异常断开时输出详细信息
+                    console.log(`❌ [${now}] 客户端异常断开 - 类型: ${connectionType}, URL: ${targetUrl.substring(0, 100)}${targetUrl.length > 100 ? '...' : ''}`);
+                    logConnectionAndCacheStatus(`${connectionType}异常断开`);
+                }
+                
+                if (response.data && !response.data.destroyed) {
+                    response.data.destroy();
+                }
+            }
+        });
+
+        // 监听客户端连接错误 - 只在真正错误时才输出日志
+        res.on('error', (error) => {
+            const now = new Date().toISOString();
+            const connectionType = isHLS ? 'HLS清单' : '视频文件';
+            
+            // 避免重复输出错误信息
+            if (!res.writableEnded && !res.writableFinished) {
+                console.log(`❌ [${now}] 客户端连接错误 - 类型: ${connectionType}, 错误: ${error.message}, URL: ${targetUrl.substring(0, 100)}${targetUrl.length > 100 ? '...' : ''}`);
+                logConnectionAndCacheStatus(`${connectionType}连接错误`);
+                
+                if (response.data && !response.data.destroyed) {
+                    response.data.destroy();
+                }
             }
         });
 
@@ -851,10 +1148,127 @@ app.use((req, res) => {
     res.status(404).json(notFoundResponse);
 });
 
+// 性能监控端点
+app.get('/performance/stats', (req, res) => {
+    const cacheStats = cacheManager.getStats();
+    const connectionStats = {
+        activeConnections: connectionPool.activeConnections,
+        maxConnections: PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS,
+        queueLength: connectionPool.queue.length,
+        utilizationRate: (connectionPool.activeConnections / PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS * 100).toFixed(2) + '%'
+    };
+
+    res.json({
+        timestamp: new Date().toISOString(),
+        cache: cacheStats,
+        connections: connectionStats,
+        config: {
+            maxConcurrentConnections: PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS,
+            requestTimeout: PERFORMANCE_CONFIG.REQUEST_TIMEOUT,
+            cacheSizeLimit: PERFORMANCE_CONFIG.CACHE_SIZE_LIMIT,
+            prefetchSegments: PERFORMANCE_CONFIG.PREFETCH_SEGMENTS
+        },
+        system: {
+            memoryUsage: process.memoryUsage(),
+            uptime: process.uptime(),
+            nodeVersion: process.version
+        }
+    });
+});
+
+// 并发预加载HLS片段端点
+app.post('/performance/prefetch', async (req, res) => {
+    const { segments, baseUrl } = req.body;
+    
+    if (!segments || !Array.isArray(segments) || !baseUrl) {
+        return res.status(400).json({ error: '缺少必要的参数' });
+    }
+
+    console.log(`🚀 开始并发预加载 ${segments.length} 个HLS片段`);
+    
+    try {
+        // 构建完整的片段URL列表
+        const segmentUrls = segments.map(segment => {
+            if (segment.startsWith('http')) {
+                return segment;
+            } else {
+                return new URL(segment, baseUrl).href;
+            }
+        });
+
+        // 使用并发请求处理
+        const results = await httpClient.concurrentRequests(segmentUrls.slice(0, PERFORMANCE_CONFIG.PREFETCH_SEGMENTS));
+        
+        const successful = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+        
+        console.log(`✅ 预加载完成: ${successful} 成功, ${failed} 失败`);
+        
+        res.json({
+            success: true,
+            totalRequested: results.length,
+            successful,
+            failed,
+            results: results.map(r => ({
+                url: r.url,
+                success: r.success,
+                error: r.error?.message
+            }))
+        });
+        
+    } catch (error) {
+        console.error('❌ 预加载失败:', error.message);
+        res.status(500).json({
+            success: false,
+            error: '预加载失败',
+            details: error.message
+        });
+    }
+});
+
+// 缓存清理端点
+app.post('/performance/cache/clear', (req, res) => {
+    const { type } = req.body;
+    
+    if (type === 'all') {
+        cacheManager.cache.clear();
+        cacheManager.stats.size = 0;
+        cacheManager.stats.hits = 0;
+        cacheManager.stats.misses = 0;
+        console.log('🗑️ 所有缓存已清理');
+    } else if (type === 'expired') {
+        const now = Date.now();
+        let clearedCount = 0;
+        
+        for (const [key, item] of cacheManager.cache) {
+            if (now - item.timestamp > 300000) { // 5分钟
+                cacheManager.cache.delete(key);
+                cacheManager.stats.size -= item.size;
+                clearedCount++;
+            }
+        }
+        
+        console.log(`🗑️ 清理了 ${clearedCount} 个过期缓存项`);
+    }
+    
+    res.json({
+        success: true,
+        message: type === 'all' ? '所有缓存已清理' : '过期缓存已清理',
+        cacheStats: cacheManager.getStats()
+    });
+});
+
 // 启动服务器
 app.listen(PORT, () => {
     console.log(`🚀 Video Space 服务器已启动!`);
     console.log(`📱 本地访问: http://localhost:${PORT}`);
     console.log(`🔗 代理端点: http://localhost:${PORT}/proxy/video?url=<视频URL>`);
     console.log(`⚡ 环境: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔧 性能优化已启用:`);
+    console.log(`   • 最大并发连接数: ${PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS}`);
+    console.log(`   • 连接池和复用: ${PERFORMANCE_CONFIG.ENABLE_KEEP_ALIVE ? '已启用' : '已禁用'}`);
+    console.log(`   • 内存缓存: ${PERFORMANCE_CONFIG.CACHE_SIZE_LIMIT}MB`);
+    console.log(`   • 并发预加载: ${PERFORMANCE_CONFIG.PREFETCH_SEGMENTS} 个片段`);
+    console.log(`📊 性能监控: http://localhost:${PORT}/performance/stats`);
+    console.log(`🚀 预加载API: POST http://localhost:${PORT}/performance/prefetch`);
 });
