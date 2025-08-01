@@ -14,9 +14,7 @@
     "category": "Productivity",
     "copyright": "Copyright © 2024 Video Space Team",
     "resources": ["src-tauri/icons"],
-    "icon": [
-      "src-tauri/icons/icon.svg"
-    ],
+    "icon": "src-tauri/icons/icon.svg",
     "windows": {
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
