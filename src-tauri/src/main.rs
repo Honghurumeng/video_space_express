@@ -6,8 +6,6 @@ use tauri::{
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri_plugin_deep_link::DeepLinkExt;
-use tauri_plugin_notification::NotificationExt;
 
 static SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -58,30 +56,19 @@ fn handle_tray_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: tauri:
 }
 
 #[tauri::command]
-async fn start_server(app: tauri::AppHandle) -> Result<String, String> {
+async fn start_server() -> Result<String, String> {
     if SERVER_RUNNING.load(Ordering::SeqCst) {
         return Ok("服务器已在运行".to_string());
     }
 
+    println!("正在启动服务器...");
+    
     // 在这里启动服务器逻辑
     // 由于这是一个代理应用，我们可以启动内置的Express服务器
     
-    println!("正在启动服务器...");
-    
-    // 设置服务器运行状态
     SERVER_RUNNING.store(true, Ordering::SeqCst);
     
-    // 发送通知
-    if let Err(e) = app.notification()
-        .builder()
-        .title("服务器已启动")
-        .body("Video Space 服务器正在后台运行")
-        .show()
-    {
-        eprintln!("显示通知失败: {}", e);
-    }
-    
-    Ok("服务器启动成功".to_string())
+    Ok("服务器启动成功".to_string());
 }
 
 #[tauri::command]
@@ -95,7 +82,7 @@ async fn stop_server() -> Result<String, String> {
     // 停止服务器逻辑
     SERVER_RUNNING.store(false, Ordering::SeqCst);
     
-    Ok("服务器已停止".to_string())
+    Ok("服务器已停止".to_string());
 }
 
 #[tauri::command]
@@ -177,7 +164,7 @@ fn main() {
             
             // 自动启动服务器
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = start_server(app.app_handle().clone()).await {
+                if let Err(e) = start_server().await {
                     eprintln!("自动启动服务器失败: {}", e);
                 }
             });
