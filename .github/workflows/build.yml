@@ -75,16 +75,17 @@ jobs:
         dir dist\
     
     - name: Build the app (Windows)
+      working-directory: src-tauri
       run: |
         echo "=== Pre-build verification ==="
         echo "Current directory: $PWD"
         echo "Checking required files:"
-        if (Test-Path "tauri.conf.json") { echo "✓ tauri.conf.json exists" } else { echo "✗ tauri.conf.json missing" }
-        if (Test-Path "src-tauri\Cargo.toml") { echo "✓ src-tauri\Cargo.toml exists" } else { echo "✗ src-tauri\Cargo.toml missing" }
-        if (Test-Path "dist") { echo "✓ dist directory exists" } else { echo "✗ dist directory missing" }
-        if (Test-Path "dist\index.html") { echo "✓ dist\index.html exists" } else { echo "✗ dist\index.html missing" }
+        if (Test-Path "../tauri.conf.json") { echo "✓ tauri.conf.json exists" } else { echo "✗ tauri.conf.json missing" }
+        if (Test-Path "Cargo.toml") { echo "✓ Cargo.toml exists" } else { echo "✗ Cargo.toml missing" }
+        if (Test-Path "../dist") { echo "✓ dist directory exists" } else { echo "✗ dist directory missing" }
+        if (Test-Path "../dist/index.html") { echo "✓ dist/index.html exists" } else { echo "✗ dist/index.html missing" }
         echo "=== Starting Tauri build ==="
-        npm run tauri build
+        cargo tauri build
       shell: pwsh
     
     - name: Upload Windows artifacts
@@ -148,16 +149,17 @@ jobs:
         ls -la dist/
     
     - name: Build the app
+      working-directory: src-tauri
       run: |
         echo "=== Pre-build verification ==="
         echo "Current directory: $(pwd)"
         echo "Checking required files:"
-        test -f tauri.conf.json && echo "✓ tauri.conf.json exists" || echo "✗ tauri.conf.json missing"
-        test -f src-tauri/Cargo.toml && echo "✓ src-tauri/Cargo.toml exists" || echo "✗ src-tauri/Cargo.toml missing"
-        test -d dist && echo "✓ dist directory exists" || echo "✗ dist directory missing"
-        test -f dist/index.html && echo "✓ dist/index.html exists" || echo "✗ dist/index.html missing"
+        test -f ../tauri.conf.json && echo "✓ tauri.conf.json exists" || echo "✗ tauri.conf.json missing"
+        test -f Cargo.toml && echo "✓ Cargo.toml exists" || echo "✗ Cargo.toml missing"
+        test -d ../dist && echo "✓ dist directory exists" || echo "✗ dist directory missing"
+        test -f ../dist/index.html && echo "✓ dist/index.html exists" || echo "✗ dist/index.html missing"
         echo "=== Starting Tauri build ==="
-        npm run tauri build
+        cargo tauri build
     
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v4
