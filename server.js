@@ -55,10 +55,6 @@ class ConnectionPool {
             origin,
             release: () => {
                 this.activeConnections--;
-                // 连接释放时打印状态
-                if (this.activeConnections % 5 === 0 || this.queue.length > 0) {
-                    logConnectionAndCacheStatus('连接释放');
-                }
                 if (this.queue.length > 0) {
                     const next = this.queue.shift();
                     next();
@@ -82,7 +78,6 @@ class CacheManager {
         const item = this.cache.get(key);
         if (item && Date.now() - item.timestamp < 300000) { // 5分钟缓存
             this.stats.hits++;
-            console.log(`🎯 缓存命中: ${key}`);
             return item.data;
         }
         this.stats.misses++;
@@ -102,7 +97,6 @@ class CacheManager {
             accessCount: 0
         });
         this.stats.size += size;
-        console.log(`💾 缓存存储: ${key} (${size} bytes)`);
     }
 
     evictLRU() {
@@ -120,9 +114,6 @@ class CacheManager {
             const item = this.cache.get(oldestKey);
             this.cache.delete(oldestKey);
             this.stats.size -= item.size;
-            console.log(`🗑️ 缓存清理: ${oldestKey} (${item.size} bytes)`);
-            // 缓存清理后打印状态
-            logConnectionAndCacheStatus('缓存清理');
         }
     }
 
@@ -231,24 +222,6 @@ class EnhancedHTTPClient {
 }
 
 const httpClient = new EnhancedHTTPClient();
-
-// 连接池和缓存状态打印函数
-function logConnectionAndCacheStatus(reason = '') {
-    const now = new Date().toISOString();
-    const cacheStats = cacheManager.getStats();
-    const connectionStats = {
-        activeConnections: connectionPool.activeConnections,
-        maxConnections: PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS,
-        queueLength: connectionPool.queue.length,
-        utilizationRate: (connectionPool.activeConnections / PERFORMANCE_CONFIG.MAX_CONCURRENT_CONNECTIONS * 100).toFixed(2) + '%'
-    };
-
-    console.log(`📊 [${now}] 连接池和缓存状态 ${reason ? `- ${reason}` : ''}`);
-    console.log(`   🔗 连接池: ${connectionStats.activeConnections}/${connectionStats.maxConnections} (${connectionStats.utilizationRate})`);
-    console.log(`   ⏳ 队列长度: ${connectionStats.queueLength}`);
-    console.log(`   💾 缓存: ${cacheStats.items} 项, 命中率: ${cacheStats.hitRate.toFixed(2)}%, 大小: ${(cacheStats.size / 1024 / 1024).toFixed(2)}MB`);
-    console.log(`   📈 缓存命中: ${cacheStats.hits}, 未命中: ${cacheStats.misses}`);
-}
 
 // 启用CORS
 app.use(cors({
@@ -694,45 +667,19 @@ async function handleProxyRequest(targetUrl, req, res) {
                 }
             });
             
-            // 监听客户端连接关闭 - 正常关闭时打印连接池和缓存状态
+            // 监听客户端连接关闭 - 静默处理
             res.on('close', () => {
-                const now = new Date().toISOString();
-                const connectionType = isTS ? 'TS片段' : '普通视频';
-                
-                // 更准确的连接状态判断
-                const isActuallyClosed = res.writableEnded || res.writableFinished || res.destroyed;
-                const wasAborted = res.writableEnded;
-                
-                // 只有真正关闭时才处理
-                if (isActuallyClosed) {
-                    if (wasAborted) {
-                        // 正常关闭时打印连接池和缓存状态
-                        logConnectionAndCacheStatus(`${connectionType}正常关闭`);
-                    } else {
-                        // 异常断开时输出详细信息
-                        console.log(`❌ [${now}] 客户端异常断开 - 类型: ${connectionType}, URL: ${targetUrl.substring(0, 100)}${targetUrl.length > 100 ? '...' : ''}`);
-                        logConnectionAndCacheStatus(`${connectionType}异常断开`);
-                    }
-                    
-                    if (response.data && !response.data.destroyed) {
-                        response.data.destroy();
-                    }
+                // 静默处理连接关闭，不输出日志
+                if (response.data && !response.data.destroyed) {
+                    response.data.destroy();
                 }
             });
 
-            // 监听客户端连接错误 - 只在真正错误时才输出日志
+            // 监听客户端连接错误 - 静默处理
             res.on('error', (error) => {
-                const now = new Date().toISOString();
-                const connectionType = isTS ? 'TS片段' : '普通视频';
-                
-                // 避免重复输出错误信息
-                if (!res.writableEnded && !res.writableFinished) {
-                    console.log(`❌ [${now}] 客户端连接错误 - 类型: ${connectionType}, 错误: ${error.message}, URL: ${targetUrl.substring(0, 100)}${targetUrl.length > 100 ? '...' : ''}`);
-                    logConnectionAndCacheStatus(`${connectionType}连接错误`);
-                    
-                    if (response.data && !response.data.destroyed) {
-                        response.data.destroy();
-                    }
+                // 静默处理连接错误，不输出日志
+                if (response.data && !response.data.destroyed) {
+                    response.data.destroy();
                 }
             });
             
@@ -781,45 +728,19 @@ async function handleProxyRequest(targetUrl, req, res) {
             console.log(`✅ ${isHLS ? 'HLS清单' : '视频文件'}传输完成`);
         });
 
-        // 监听客户端连接关闭 - 正常关闭时打印连接池和缓存状态
+        // 监听客户端连接关闭 - 静默处理
         res.on('close', () => {
-            const now = new Date().toISOString();
-            const connectionType = isHLS ? 'HLS清单' : '视频文件';
-            
-            // 更准确的连接状态判断
-            const isActuallyClosed = res.writableEnded || res.writableFinished || res.destroyed;
-            const wasAborted = res.writableEnded;
-            
-            // 只有真正关闭时才处理
-            if (isActuallyClosed) {
-                if (wasAborted) {
-                    // 正常关闭时打印连接池和缓存状态
-                    logConnectionAndCacheStatus(`${connectionType}正常关闭`);
-                } else {
-                    // 异常断开时输出详细信息
-                    console.log(`❌ [${now}] 客户端异常断开 - 类型: ${connectionType}, URL: ${targetUrl.substring(0, 100)}${targetUrl.length > 100 ? '...' : ''}`);
-                    logConnectionAndCacheStatus(`${connectionType}异常断开`);
-                }
-                
-                if (response.data && !response.data.destroyed) {
-                    response.data.destroy();
-                }
+            // 静默处理连接关闭，不输出日志
+            if (response.data && !response.data.destroyed) {
+                response.data.destroy();
             }
         });
 
-        // 监听客户端连接错误 - 只在真正错误时才输出日志
+        // 监听客户端连接错误 - 静默处理
         res.on('error', (error) => {
-            const now = new Date().toISOString();
-            const connectionType = isHLS ? 'HLS清单' : '视频文件';
-            
-            // 避免重复输出错误信息
-            if (!res.writableEnded && !res.writableFinished) {
-                console.log(`❌ [${now}] 客户端连接错误 - 类型: ${connectionType}, 错误: ${error.message}, URL: ${targetUrl.substring(0, 100)}${targetUrl.length > 100 ? '...' : ''}`);
-                logConnectionAndCacheStatus(`${connectionType}连接错误`);
-                
-                if (response.data && !response.data.destroyed) {
-                    response.data.destroy();
-                }
+            // 静默处理连接错误，不输出日志
+            if (response.data && !response.data.destroyed) {
+                response.data.destroy();
             }
         });
 
@@ -1183,8 +1104,6 @@ app.post('/performance/prefetch', async (req, res) => {
     if (!segments || !Array.isArray(segments) || !baseUrl) {
         return res.status(400).json({ error: '缺少必要的参数' });
     }
-
-    console.log(`🚀 开始并发预加载 ${segments.length} 个HLS片段`);
     
     try {
         // 构建完整的片段URL列表
@@ -1202,8 +1121,6 @@ app.post('/performance/prefetch', async (req, res) => {
         const successful = results.filter(r => r.success).length;
         const failed = results.filter(r => !r.success).length;
         
-        console.log(`✅ 预加载完成: ${successful} 成功, ${failed} 失败`);
-        
         res.json({
             success: true,
             totalRequested: results.length,
@@ -1217,7 +1134,6 @@ app.post('/performance/prefetch', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ 预加载失败:', error.message);
         res.status(500).json({
             success: false,
             error: '预加载失败',
@@ -1235,7 +1151,6 @@ app.post('/performance/cache/clear', (req, res) => {
         cacheManager.stats.size = 0;
         cacheManager.stats.hits = 0;
         cacheManager.stats.misses = 0;
-        console.log('🗑️ 所有缓存已清理');
     } else if (type === 'expired') {
         const now = Date.now();
         let clearedCount = 0;
@@ -1247,8 +1162,6 @@ app.post('/performance/cache/clear', (req, res) => {
                 clearedCount++;
             }
         }
-        
-        console.log(`🗑️ 清理了 ${clearedCount} 个过期缓存项`);
     }
     
     res.json({
