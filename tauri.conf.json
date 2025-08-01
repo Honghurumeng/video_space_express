@@ -67,8 +67,7 @@
         "resizable": true,
         "decorations": true,
         "transparent": false,
-        "fullscreen": false,
-        "theme": "system"
+        "fullscreen": false
       }
     ],
     "trayIcon": {
