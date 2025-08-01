@@ -49,7 +49,25 @@ jobs:
         targets: x86_64-pc-windows-msvc
     
     - name: Install Tauri CLI
-      run: npm install -g @tauri-apps/cli@^2.0.0
+      run: |
+        echo "Installing Tauri CLI..."
+        npm install -g @tauri-apps/cli@^2.0.0
+        echo "Tauri CLI installed successfully"
+        npx tauri --version
+    
+    - name: Debug environment (Windows)
+      run: |
+        echo "=== Environment Debug ==="
+        echo "Working directory: $(pwd)"
+        echo "Rust version:"
+        rustc --version
+        echo "Cargo version:"
+        cargo --version
+        echo "Tauri CLI version:"
+        npx tauri --version
+        echo "Environment variables:"
+        echo "PATH: $env:PATH"
+      shell: pwsh
     
     - name: Install dependencies (Windows)
       if: runner.os == 'Windows'
@@ -80,14 +98,14 @@ jobs:
     - name: Build the app (Windows)
       run: |
         echo "=== Pre-build verification ==="
-        echo "Current directory: $PWD"
+        echo "Current directory: $(pwd)"
         echo "Checking required files:"
         if (Test-Path "tauri.conf.json") { echo "✓ tauri.conf.json exists" } else { echo "✗ tauri.conf.json missing" }
         if (Test-Path "src-tauri\Cargo.toml") { echo "✓ src-tauri\Cargo.toml exists" } else { echo "✗ src-tauri\Cargo.toml missing" }
         if (Test-Path "dist") { echo "✓ dist directory exists" } else { echo "✗ dist directory missing" }
         if (Test-Path "dist\index.html") { echo "✓ dist\index.html exists" } else { echo "✗ dist\index.html missing" }
         echo "=== Starting Tauri build ==="
-        tauri build
+        npx tauri build --verbose
       shell: pwsh
     
     - name: Upload Windows artifacts
@@ -137,7 +155,24 @@ jobs:
         targets: x86_64-apple-darwin
     
     - name: Install Tauri CLI
-      run: npm install -g @tauri-apps/cli@^2.0.0
+      run: |
+        echo "Installing Tauri CLI..."
+        npm install -g @tauri-apps/cli@^2.0.0
+        echo "Tauri CLI installed successfully"
+        npx tauri --version
+    
+    - name: Debug environment (macOS)
+      run: |
+        echo "=== Environment Debug ==="
+        echo "Working directory: $(pwd)"
+        echo "Rust version:"
+        rustc --version
+        echo "Cargo version:"
+        cargo --version
+        echo "Tauri CLI version:"
+        npx tauri --version
+        echo "Environment variables:"
+        echo "PATH: $PATH"
     
     - name: Install frontend dependencies
       run: npm install
@@ -163,7 +198,7 @@ jobs:
         test -d dist && echo "✓ dist directory exists" || echo "✗ dist directory missing"
         test -f dist/index.html && echo "✓ dist/index.html exists" || echo "✗ dist/index.html missing"
         echo "=== Starting Tauri build ==="
-        tauri build
+        npx tauri build --verbose
     
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v4
@@ -238,7 +273,11 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
     
     - name: Install Tauri CLI
-      run: npm install -g @tauri-apps/cli@^2.0.0
+      run: |
+        echo "Installing Tauri CLI..."
+        npm install -g @tauri-apps/cli@^2.0.0
+        echo "Tauri CLI installed successfully"
+        npx tauri --version
     
     - name: Install dependencies
       run: |
@@ -249,7 +288,7 @@ jobs:
       run: npm install
     
     - name: Check Tauri configuration
-      run: npm run tauri info
+      run: npx tauri info
     
     - name: Validate project structure
       run: |
