@@ -77,14 +77,15 @@ jobs:
     - name: Build the app (Windows)
       run: |
         echo "=== Pre-build verification ==="
-        echo "Current directory: %CD%"
+        echo "Current directory: $PWD"
         echo "Checking required files:"
-        if exist tauri.conf.json (echo "✓ tauri.conf.json exists") else (echo "✗ tauri.conf.json missing")
-        if exist src-tauri\Cargo.toml (echo "✓ src-tauri\Cargo.toml exists") else (echo "✗ src-tauri\Cargo.toml missing")
-        if exist dist (echo "✓ dist directory exists") else (echo "✗ dist directory missing")
-        if exist dist\index.html (echo "✓ dist\index.html exists") else (echo "✗ dist\index.html missing")
+        if (Test-Path "tauri.conf.json") { echo "✓ tauri.conf.json exists" } else { echo "✗ tauri.conf.json missing" }
+        if (Test-Path "src-tauri\Cargo.toml") { echo "✓ src-tauri\Cargo.toml exists" } else { echo "✗ src-tauri\Cargo.toml missing" }
+        if (Test-Path "dist") { echo "✓ dist directory exists" } else { echo "✗ dist directory missing" }
+        if (Test-Path "dist\index.html") { echo "✓ dist\index.html exists" } else { echo "✗ dist\index.html missing" }
         echo "=== Starting Tauri build ==="
         npm run tauri build
+      shell: pwsh
     
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
