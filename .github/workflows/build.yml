@@ -48,6 +48,12 @@ jobs:
       with:
         targets: x86_64-pc-windows-msvc
     
+    - name: Install dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # Windows doesn't need additional system dependencies for Tauri
+        echo "Windows runner - no additional dependencies needed"
+    
     - name: Install dependencies (Ubuntu only)
       if: runner.os == 'Linux'
       run: |
@@ -57,8 +63,28 @@ jobs:
     - name: Install frontend dependencies
       run: npm install
     
-    - name: Build the app
-      run: npm run tauri build
+    - name: Debug project structure
+      run: |
+        echo "=== Project Structure ==="
+        dir
+        echo "=== Tauri Config ==="
+        type tauri.conf.json
+        echo "=== Build frontend ==="
+        npm run build:frontend
+        echo "=== Dist directory ==="
+        dir dist\
+    
+    - name: Build the app (Windows)
+      run: |
+        echo "=== Pre-build verification ==="
+        echo "Current directory: %CD%"
+        echo "Checking required files:"
+        if exist tauri.conf.json (echo "✓ tauri.conf.json exists") else (echo "✗ tauri.conf.json missing")
+        if exist src-tauri\Cargo.toml (echo "✓ src-tauri\Cargo.toml exists") else (echo "✗ src-tauri\Cargo.toml missing")
+        if exist dist (echo "✓ dist directory exists") else (echo "✗ dist directory missing")
+        if exist dist\index.html (echo "✓ dist\index.html exists") else (echo "✗ dist\index.html missing")
+        echo "=== Starting Tauri build ==="
+        npm run tauri build
     
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
@@ -83,6 +109,17 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     
+    - name: Debug repository structure
+      run: |
+        echo "=== Current working directory ==="
+        pwd
+        echo "=== Repository structure ==="
+        ls -la
+        echo "=== Check for Cargo.toml ==="
+        find . -name "Cargo.toml" -type f
+        echo "=== Check for tauri.conf.json ==="
+        find . -name "tauri.conf.json" -type f
+    
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
@@ -98,8 +135,28 @@ jobs:
     - name: Install frontend dependencies
       run: npm install
     
+    - name: Debug project structure
+      run: |
+        echo "=== Project Structure ==="
+        ls -la
+        echo "=== Tauri Config ==="
+        cat tauri.conf.json
+        echo "=== Build frontend ==="
+        npm run build:frontend
+        echo "=== Dist directory ==="
+        ls -la dist/
+    
     - name: Build the app
-      run: npm run tauri build
+      run: |
+        echo "=== Pre-build verification ==="
+        echo "Current directory: $(pwd)"
+        echo "Checking required files:"
+        test -f tauri.conf.json && echo "✓ tauri.conf.json exists" || echo "✗ tauri.conf.json missing"
+        test -f src-tauri/Cargo.toml && echo "✓ src-tauri/Cargo.toml exists" || echo "✗ src-tauri/Cargo.toml missing"
+        test -d dist && echo "✓ dist directory exists" || echo "✗ dist directory missing"
+        test -f dist/index.html && echo "✓ dist/index.html exists" || echo "✗ dist/index.html missing"
+        echo "=== Starting Tauri build ==="
+        npm run tauri build
     
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v4
