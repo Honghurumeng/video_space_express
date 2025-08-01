@@ -925,9 +925,14 @@
         
         // 清理播放器
         function cleanupPlayer() {
-            // 销毁HLS实例
+            // 销毁HLS实例并清理标记
             if (hlsInstance) {
                 try {
+                    // 重置事件监听器标记
+                    delete hlsInstance.bufferEventsAttached;
+                    delete hlsInstance.initPtsEventAttached;
+                    delete hlsInstance.prefetchStarted;
+                    
                     hlsInstance.destroy();
                 } catch (e) {
                     console.error('销毁HLS实例失败:', e);
@@ -1121,9 +1126,12 @@
                         return;
                     }
                     
-                    // 🚀 启用并发预加载功能
-                    console.log('🚀 开始并发预加载HLS片段...');
-                    prefetchHLSSegments(url, data);
+                    // 🚀 启用并发预加载功能 - 防重复调用
+                    if (!hlsInstance.prefetchStarted) {
+                        console.log('🚀 开始并发预加载HLS片段...');
+                        hlsInstance.prefetchStarted = true;
+                        prefetchHLSSegments(url, data);
+                    }
                     
                     // showToast('HLS流解析成功，开始播放', 'success');
                     
@@ -1188,21 +1196,21 @@
                     }
                 });
                 
-                hlsInstance.on(Hls.Events.FRAG_LOADING, (event, data) => {
-                    console.log('🔄 片段开始加载:', data.frag?.url, '级别:', data.frag?.level);
-                });
+                // hlsInstance.on(Hls.Events.FRAG_LOADING, (event, data) => {
+                //     console.log('🔄 片段开始加载:', data.frag?.url, '级别:', data.frag?.level);
+                // });
                 
-                hlsInstance.on(Hls.Events.FRAG_LOADED, (event, data) => {
-                    console.log('✅ 片段加载成功:', data.frag?.url, '大小:', data.payload?.byteLength, '字节');
-                });
+                // hlsInstance.on(Hls.Events.FRAG_LOADED, (event, data) => {
+                //     console.log('✅ 片段加载成功:', data.frag?.url, '大小:', data.payload?.byteLength, '字节');
+                // });
                 
-                hlsInstance.on(Hls.Events.FRAG_PARSED, (event, data) => {
-                    console.log('✅ 片段解析完成:', data.frag?.url);
-                });
+                // hlsInstance.on(Hls.Events.FRAG_PARSED, (event, data) => {
+                //     console.log('✅ 片段解析完成:', data.frag?.url);
+                // });
                 
-                hlsInstance.on(Hls.Events.FRAG_BUFFERED, (event, data) => {
-                    console.log('✅ 片段缓冲完成:', data.frag?.url);
-                });
+                // hlsInstance.on(Hls.Events.FRAG_BUFFERED, (event, data) => {
+                //     console.log('✅ 片段缓冲完成:', data.frag?.url);
+                // });
                 
                 hlsInstance.on(Hls.Events.ERROR, (event, data) => {
                     console.error('❌ HLS错误:', data);
@@ -1316,24 +1324,34 @@
                     }
                 });
                 
-                // 监听缓冲状态
-                hlsInstance.on(Hls.Events.BUFFER_APPENDING, () => {
-                    console.log('📥 开始添加数据到缓冲区');
-                });
+                // 监听缓冲状态 - 防重复添加
+                if (!hlsInstance.bufferEventsAttached) {
+                    // hlsInstance.on(Hls.Events.BUFFER_APPENDING, () => {
+                    //     console.log('📥 开始添加数据到缓冲区');
+                    // });
+                    
+                    // hlsInstance.on(Hls.Events.BUFFER_APPENDED, () => {
+                    //     console.log('✅ 数据已添加到缓冲区');
+                    // });
+                    
+                    hlsInstance.on(Hls.Events.BUFFER_EOS, () => {
+                        console.log('🏁 缓冲区到达末尾');
+                    });
+                    
+                    // 标记事件已添加
+                    hlsInstance.bufferEventsAttached = true;
+                }
                 
-                hlsInstance.on(Hls.Events.BUFFER_APPENDED, () => {
-                    console.log('✅ 数据已添加到缓冲区');
-                });
-                
-                hlsInstance.on(Hls.Events.BUFFER_EOS, () => {
-                    console.log('🏁 缓冲区到达末尾');
-                });
-                
-                // 监听首帧渲染
-                hlsInstance.on(Hls.Events.INIT_PTS_FOUND, () => {
-                    console.log('🎬 找到初始时间戳，即将开始播放');
-                    // showToast('视频即将开始播放...', 'info');
-                });
+                // 监听首帧渲染 - 防重复添加
+                if (!hlsInstance.initPtsEventAttached) {
+                    hlsInstance.on(Hls.Events.INIT_PTS_FOUND, () => {
+                        console.log('🎬 找到初始时间戳，即将开始播放');
+                        // showToast('视频即将开始播放...', 'info');
+                    });
+                    
+                    // 标记事件已添加
+                    hlsInstance.initPtsEventAttached = true;
+                }
                 
                 console.log('✅ HLS播放器初始化完成');
                 
@@ -2129,9 +2147,22 @@
             try {
                 console.log('🚀 开始并发预加载HLS片段...');
                 
+                // 验证manifest URL
+                if (!manifestUrl || typeof manifestUrl !== 'string') {
+                    console.error('❌ 无效的manifest URL:', manifestUrl);
+                    return;
+                }
+                
                 // 从manifest URL中提取基础URL
-                const manifestUrlObj = new URL(manifestUrl);
-                const baseUrl = manifestUrlObj.substring(0, manifestUrlObj.lastIndexOf('/') + 1);
+                let baseUrl;
+                try {
+                    const manifestUrlObj = new URL(manifestUrl);
+                    const basePath = manifestUrlObj.pathname.substring(0, manifestUrlObj.pathname.lastIndexOf('/') + 1);
+                    baseUrl = manifestUrlObj.origin + basePath;
+                } catch (error) {
+                    console.error('❌ 无法解析manifest URL:', manifestUrl, error);
+                    return;
+                }
                 
                 // 收集需要预加载的片段URL
                 const segmentsToPrefetch = [];
@@ -2143,7 +2174,7 @@
                     if (firstLevel.details && firstLevel.details.fragments) {
                         const fragments = firstLevel.details.fragments.slice(0, 5); // 预加载前5个片段
                         fragments.forEach(fragment => {
-                            if (fragment.url) {
+                            if (fragment.url && typeof fragment.url === 'string') {
                                 segmentsToPrefetch.push(fragment.url);
                             }
                         });
@@ -2158,25 +2189,42 @@
                 console.log(`📦 预加载 ${segmentsToPrefetch.length} 个片段:`, segmentsToPrefetch);
                 
                 // 发送预加载请求到服务器
-                const response = await fetch('/performance/prefetch', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        segments: segmentsToPrefetch,
-                        baseUrl: baseUrl
-                    })
-                });
+                let response;
+                try {
+                    response = await fetch('/performance/prefetch', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            segments: segmentsToPrefetch,
+                            baseUrl: baseUrl
+                        })
+                    });
+                } catch (fetchError) {
+                    console.error('❌ 预加载请求发送失败:', fetchError);
+                    return;
+                }
                 
-                const result = await response.json();
+                if (!response.ok) {
+                    console.error('❌ 预加载请求失败，状态码:', response.status);
+                    return;
+                }
+                
+                let result;
+                try {
+                    result = await response.json();
+                } catch (jsonError) {
+                    console.error('❌ 预加载响应解析失败:', jsonError);
+                    return;
+                }
                 
                 if (result.success) {
                     console.log(`✅ 并发预加载完成: ${result.successful}/${result.totalRequested} 成功`);
                     showToast(`预加载完成: ${result.successful}/${result.totalRequested} 个片段`, 'success');
                 } else {
                     console.error('❌ 并发预加载失败:', result.error);
-                    showToast('预加载失败', 'error');
+                    // 不显示错误提示，因为这只是优化功能
                 }
                 
             } catch (error) {

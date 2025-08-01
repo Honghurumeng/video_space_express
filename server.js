@@ -24,7 +24,7 @@ const PERFORMANCE_CONFIG = {
     // 启用连接复用
     ENABLE_KEEP_ALIVE: true,
     // 并发预加载片段数
-    PREFETCH_SEGMENTS: 3
+    PREFETCH_SEGMENTS: 6
 };
 
 // 简单的内存缓存系统
