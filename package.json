@@ -5,7 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "keywords": ["video", "player", "express", "proxy"],
   "author": "",
@@ -17,6 +20,7 @@
     "axios": "^1.6.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "@tauri-apps/cli": "^2.0.0"
   }
 } 

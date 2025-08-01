@@ -1,0 +1,53 @@
+[package]
+name = "video-space"
+version = "1.2.0"
+description = "视频播放应用，支持多集视频管理和播放"
+authors = ["Video Space Team"]
+edition = "2021"
+rust-version = "1.70.0"
+
+[lib]
+name = "video_space_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "video-space"
+path = "src/main.rs"
+
+[dependencies]
+tauri = { version = "2.0", features = ["protocol-asset", "image-ico", "image-png"] }
+tauri-plugin-deep-link = "2.0"
+tauri-plugin-shell = "2.0"
+tauri-plugin-fs = "2.0"
+tauri-plugin-dialog = "2.0"
+tauri-plugin-notification = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+url = "2.5"
+reqwest = { version = "0.11", features = ["json"] }
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.10"
+webbrowser = "0.8"
+sysinfo = "0.30"
+open = "5.0"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2.0"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+devtools = ["tauri/devtools"]
+
+[profile.dev]
+incremental = true
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

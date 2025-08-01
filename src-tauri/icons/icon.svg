@@ -1,0 +1,35 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 -->
+  <rect width="1024" height="1024" rx="200" fill="#3B82F6"/>
+  
+  <!-- 播放按钮 -->
+  <path d="M 350 200 L 350 824 L 750 512 Z" fill="white" opacity="0.9"/>
+  
+  <!-- 地球/网络象征 -->
+  <circle cx="512" cy="512" r="300" fill="none" stroke="white" stroke-width="20" opacity="0.3"/>
+  <ellipse cx="512" cy="512" rx="300" ry="150" fill="none" stroke="white" stroke-width="20" opacity="0.3"/>
+  <ellipse cx="512" cy="512" rx="150" ry="300" fill="none" stroke="white" stroke-width="20" opacity="0.3"/>
+  
+  <!-- 视频胶片装饰 -->
+  <rect x="100" y="100" width="100" height="824" rx="10" fill="#10B981" opacity="0.2"/>
+  <rect x="824" y="100" width="100" height="824" rx="10" fill="#10B981" opacity="0.2"/>
+  
+  <!-- 胶片孔 -->
+  <circle cx="150" cy="150" r="15" fill="white" opacity="0.6"/>
+  <circle cx="150" cy="250" r="15" fill="white" opacity="0.6"/>
+  <circle cx="150" cy="350" r="15" fill="white" opacity="0.6"/>
+  <circle cx="150" cy="450" r="15" fill="white" opacity="0.6"/>
+  <circle cx="150" cy="550" r="15" fill="white" opacity="0.6"/>
+  <circle cx="150" cy="650" r="15" fill="white" opacity="0.6"/>
+  <circle cx="150" cy="750" r="15" fill="white" opacity="0.6"/>
+  <circle cx="150" cy="850" r="15" fill="white" opacity="0.6"/>
+  
+  <circle cx="874" cy="150" r="15" fill="white" opacity="0.6"/>
+  <circle cx="874" cy="250" r="15" fill="white" opacity="0.6"/>
+  <circle cx="874" cy="350" r="15" fill="white" opacity="0.6"/>
+  <circle cx="874" cy="450" r="15" fill="white" opacity="0.6"/>
+  <circle cx="874" cy="550" r="15" fill="white" opacity="0.6"/>
+  <circle cx="874" cy="650" r="15" fill="white" opacity="0.6"/>
+  <circle cx="874" cy="750" r="15" fill="white" opacity="0.6"/>
+  <circle cx="874" cy="850" r="15" fill="white" opacity="0.6"/>
+</svg>

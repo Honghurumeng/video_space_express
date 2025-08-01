@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Space</title>
+    
+    <!-- Tauri API -->
+    <script defer src="https://unpkg.com/@tauri-apps/api@2.0.0/dist/tauri.umd.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <!-- HLS.js 播放器 -->
@@ -284,6 +287,11 @@
 
         // DOM 加载完成后执行
         document.addEventListener('DOMContentLoaded', () => {
+            // 检查是否在 Tauri 环境中
+            if (window.__TAURI__) {
+                initializeTauriApp();
+            }
+            
             // 从 localStorage 加载保存的视频
             loadVideos();
 
@@ -307,6 +315,67 @@
                 if (e.target === episodesOverlay) hideEpisodesModal();
             });
         });
+
+        // Tauri 应用初始化
+        async function initializeTauriApp() {
+            try {
+                const { appWindow, invoke } = window.__TAURI__;
+                
+                // 设置窗口标题
+                await appWindow.setTitle('Video Space - 视频播放器');
+                
+                // 启动服务器
+                await invoke('start_server');
+                
+                // 监听窗口关闭事件
+                appWindow.onCloseRequested(async () => {
+                    await invoke('stop_server');
+                });
+                
+                // 获取系统信息
+                const sysInfo = await invoke('get_system_info');
+                console.log('系统信息:', sysInfo);
+                
+                // 添加 Tauri 特定功能按钮
+                addTauriControls();
+                
+            } catch (error) {
+                console.error('Tauri 初始化失败:', error);
+            }
+        }
+
+        // 添加 Tauri 特定控制
+        function addTauriControls() {
+            const header = document.querySelector('header .flex');
+            if (!header) return;
+            
+            // 添加系统信息按钮
+            const sysInfoBtn = document.createElement('button');
+            sysInfoBtn.className = 'ml-4 px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors';
+            sysInfoBtn.textContent = '系统信息';
+            sysInfoBtn.onclick = async () => {
+                try {
+                    const sysInfo = await window.__TAURI__.invoke('get_system_info');
+                    alert(`系统信息:\nOS: ${sysInfo.os}\n架构: ${sysInfo.arch}\n内存: ${Math.round(sysInfo.total_memory / 1024 / 1024 / 1024)}GB\nCPU核心数: ${sysInfo.cpu_count}`);
+                } catch (error) {
+                    console.error('获取系统信息失败:', error);
+                }
+            };
+            header.appendChild(sysInfoBtn);
+            
+            // 添加打开浏览器按钮
+            const openBrowserBtn = document.createElement('button');
+            openBrowserBtn.className = 'ml-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors';
+            openBrowserBtn.textContent = '在浏览器打开';
+            openBrowserBtn.onclick = async () => {
+                try {
+                    await window.__TAURI__.invoke('open_in_browser', { url: 'http://localhost:3000' });
+                } catch (error) {
+                    console.error('打开浏览器失败:', error);
+                }
+            };
+            header.appendChild(openBrowserBtn);
+        }
 
         // 显示粘贴视频地址区域
         function showInputSection() {

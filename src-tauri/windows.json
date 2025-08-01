@@ -1,0 +1,34 @@
+{
+  "windows": [
+    {
+      "parent": "main",
+      "identifier": "main",
+      "title": "Video Space",
+      "width": 1200,
+      "height": 800,
+      "minWidth": 800,
+      "minHeight": 600,
+      "center": true,
+      "x": 100,
+      "y": 100,
+      "theme": "system",
+      "resizable": true,
+      "decorations": true,
+      "transparent": false,
+      "visible": true,
+      "focus": true,
+      "fullscreen": false,
+      "maximized": false,
+      "alwaysOnTop": false,
+      "skipTaskbar": false,
+      "titleBarStyle": "visible",
+      "hiddenTitle": false,
+      "shadow": true,
+      "contentProtected": false,
+      "zoomHotkeysEnabled": true,
+      "acceptFirstMouse": true,
+      "tabbingIdentifier": "",
+      "additionalBrowserArgs": ""
+    }
+  ]
+}
