@@ -5,7 +5,6 @@ use tauri::{
 };
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::process::{Command, Child};
 use std::sync::Mutex;
 
@@ -146,31 +145,14 @@ async fn get_system_info() -> Result<serde_json::Value, String> {
     Ok(info)
 }
 
-#[tauri::command]
-async fn handle_deep_link(url: String) -> Result<(), String> {
-    println!("处理深度链接: {}", url);
-    // 处理 video-space:// 协议链接
-    // 可以解析链接中的参数并执行相应操作
-    
-    Ok(())
-}
-
 fn main() {
     env_logger::init();
     
     tauri::Builder::default()
-        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            // 设置深度链接处理
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
-                app.deep_link().register_all("video-space")?;
-            }
-
             // 创建托盘菜单
             let show_i = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>);
             let hide_i = MenuItem::with_id(app, "hide", "隐藏窗口", true, None::<&str>);
@@ -207,8 +189,7 @@ fn main() {
             stop_server,
             get_server_status,
             open_in_browser,
-            get_system_info,
-            handle_deep_link
+            get_system_info
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

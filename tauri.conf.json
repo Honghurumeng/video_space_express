@@ -34,14 +34,6 @@
     }
   },
   "plugins": {
-    "deepLink": {
-      "mobile": [],
-      "desktop": {
-        "schemes": [
-          "video-space"
-        ]
-      }
-    },
     "shell": {
       "open": true,
       "scope": [
@@ -57,32 +49,31 @@
     },
     "dialog": {
       "all": true
+    }
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self' data: https://* http://localhost:* ws://localhost:* wss://localhost:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://* http://localhost:*; connect-src 'self' https://* http://localhost:* ws://localhost:* wss://localhost:*; media-src 'self' blob: data: https://* http://localhost:*; frame-src 'self' https://* http://localhost:*;"
     },
-    "notification": {
-      "all": true
+    "windows": [
+      {
+        "label": "main",
+        "title": "Video Space",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "fullscreen": false,
+        "theme": "system"
+      }
+    ],
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true
     }
-  },
-  "security": {
-    "csp": "default-src 'self' data: https://* http://localhost:* ws://localhost:* wss://localhost:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://* http://localhost:*; connect-src 'self' https://* http://localhost:* ws://localhost:* wss://localhost:*; media-src 'self' blob: data: https://* http://localhost:*; frame-src 'self' https://* http://localhost:*;"
-  },
-  "windows": [
-    {
-      "label": "main",
-      "title": "Video Space",
-      "width": 1200,
-      "height": 800,
-      "minWidth": 800,
-      "minHeight": 600,
-      "center": true,
-      "resizable": true,
-      "decorations": true,
-      "transparent": false,
-      "fullscreen": false,
-      "theme": "system"
-    }
-  ],
-  "systemTray": {
-    "iconPath": "icons/icon.png",
-    "iconAsTemplate": true
   }
 }
