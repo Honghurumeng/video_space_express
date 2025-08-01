@@ -16,7 +16,7 @@ npm run dev         # 开发环境启动（使用 nodemon 自动重启）
 ```
 
 ### 访问应用
-启动后访问: `http://localhost:3000`
+启动后访问: `http://localhost:3010`
 
 ## 核心架构
 
