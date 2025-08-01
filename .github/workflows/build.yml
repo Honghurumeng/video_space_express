@@ -1,17 +1,36 @@
 name: Build Tauri App
 
 on:
-  push:
-    branches: [ main, develop ]
-    tags: [ v* ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: '构建类型'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+        - release
+        - test
+      target_platforms:
+        description: '目标平台'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - windows
+        - macos
+      create_release:
+        description: '创建GitHub Release'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-windows:
     runs-on: windows-latest
     timeout-minutes: 30
+    if: ${{ github.event.inputs.target_platforms == 'all' || github.event.inputs.target_platforms == 'windows' }}
     
     steps:
     - name: Checkout repository
@@ -42,22 +61,23 @@ jobs:
       run: npm run tauri build
     
     - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: windows-bundle
         path: src-tauri/target/release/bundle/msi/*.msi
         retention-days: 30
     
     - name: Upload portable Windows artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: windows-portable
         path: src-tauri/target/release/video-space.exe
         retention-days: 30
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-14  # 使用macOS 14以避免macOS 15迁移警告
     timeout-minutes: 30
+    if: ${{ github.event.inputs.target_platforms == 'all' || github.event.inputs.target_platforms == 'macos' }}
     
     steps:
     - name: Checkout repository
@@ -82,14 +102,14 @@ jobs:
       run: npm run tauri build
     
     - name: Upload macOS artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: macos-bundle
         path: src-tauri/target/release/bundle/macos/*.app
         retention-days: 30
     
     - name: Upload macOS dmg
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: macos-dmg
         path: src-tauri/target/release/bundle/dmg/*.dmg
@@ -98,26 +118,26 @@ jobs:
   release:
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ github.event.inputs.create_release == 'true' && (github.event.inputs.build_type == 'release') }}
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
     
     - name: Download Windows artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: windows-bundle
         path: artifacts/windows/
     
     - name: Download Windows portable artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: windows-portable
         path: artifacts/windows-portable/
     
     - name: Download macOS artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: macos-dmg
         path: artifacts/macos/
@@ -186,7 +206,7 @@ jobs:
         fi
     
     - name: Upload validation results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: validation-results
