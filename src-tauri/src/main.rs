@@ -6,8 +6,11 @@ use tauri::{
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::process::{Command, Child};
+use std::sync::Mutex;
 
 static SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
+static SERVER_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
 
 // 托盘菜单处理函数
 fn handle_tray_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: tauri::tray::TrayIconEvent) {
@@ -63,12 +66,26 @@ async fn start_server() -> Result<String, String> {
 
     println!("正在启动服务器...");
     
-    // 在这里启动服务器逻辑
-    // 由于这是一个代理应用，我们可以启动内置的Express服务器
+    // 启动Node.js Express服务器
+    let mut command = Command::new("node");
+    command.arg("server.js");
     
-    SERVER_RUNNING.store(true, Ordering::SeqCst);
+    // 在当前工作目录启动
+    command.current_dir("..");
     
-    Ok("服务器启动成功".to_string());
+    match command.spawn() {
+        Ok(child) => {
+            let mut process = SERVER_PROCESS.lock().unwrap();
+            *process = Some(child);
+            SERVER_RUNNING.store(true, Ordering::SeqCst);
+            println!("服务器启动成功");
+            Ok("服务器启动成功".to_string())
+        }
+        Err(e) => {
+            eprintln!("启动服务器失败: {}", e);
+            Err(format!("启动服务器失败: {}", e))
+        }
+    }
 }
 
 #[tauri::command]
@@ -79,10 +96,24 @@ async fn stop_server() -> Result<String, String> {
 
     println!("正在停止服务器...");
     
-    // 停止服务器逻辑
-    SERVER_RUNNING.store(false, Ordering::SeqCst);
-    
-    Ok("服务器已停止".to_string());
+    // 停止Node.js服务器进程
+    let mut process = SERVER_PROCESS.lock().unwrap();
+    if let Some(mut child) = process.take() {
+        match child.kill() {
+            Ok(_) => {
+                println!("服务器进程已终止");
+                SERVER_RUNNING.store(false, Ordering::SeqCst);
+                Ok("服务器已停止".to_string())
+            }
+            Err(e) => {
+                eprintln!("停止服务器失败: {}", e);
+                Err(format!("停止服务器失败: {}", e))
+            }
+        }
+    } else {
+        SERVER_RUNNING.store(false, Ordering::SeqCst);
+        Ok("服务器已停止".to_string())
+    }
 }
 
 #[tauri::command]

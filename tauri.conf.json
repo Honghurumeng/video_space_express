@@ -6,7 +6,7 @@
   "build": {
     "beforeBuildCommand": "npm install",
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:3000",
+    "devUrl": "http://localhost:3010",
     "frontendDist": "../"
   },
   "bundle": {

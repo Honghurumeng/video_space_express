@@ -369,7 +369,7 @@
             openBrowserBtn.textContent = '在浏览器打开';
             openBrowserBtn.onclick = async () => {
                 try {
-                    await window.__TAURI__.invoke('open_in_browser', { url: 'http://localhost:3000' });
+                    await window.__TAURI__.invoke('open_in_browser', { url: 'http://localhost:3010' });
                 } catch (error) {
                     console.error('打开浏览器失败:', error);
                 }
