@@ -1,322 +1,71 @@
-name: Build Tauri App
+name: 'Build Tauri App'
 
 on:
   workflow_dispatch:
     inputs:
-      build_type:
-        description: '构建类型'
-        required: true
-        default: 'release'
-        type: choice
-        options:
-        - release
-        - test
-      target_platforms:
-        description: '目标平台'
-        required: true
-        default: 'all'
-        type: choice
-        options:
-        - all
-        - windows
-        - macos
       create_release:
-        description: '创建GitHub Release'
+        description: '创建 GitHub Release'
         required: false
         default: false
         type: boolean
+  push:
+    branches:
+      - main
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    if: ${{ github.event.inputs.target_platforms == 'all' || github.event.inputs.target_platforms == 'windows' }}
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-        cache-dependency-path: 'package-lock.json'
-    
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: x86_64-pc-windows-msvc
-    
-    - name: Install Tauri CLI
-      run: |
-        echo "Installing Tauri CLI..."
-        npm install -g @tauri-apps/cli@^2.0.0
-        echo "Tauri CLI installed successfully"
-        npx tauri --version
-    
-    - name: Debug environment (Windows)
-      run: |
-        echo "=== Environment Debug ==="
-        echo "Working directory: $(pwd)"
-        echo "Rust version:"
-        rustc --version
-        echo "Cargo version:"
-        cargo --version
-        echo "Tauri CLI version:"
-        npx tauri --version
-        echo "Environment variables:"
-        echo "PATH: $env:PATH"
-      shell: pwsh
-    
-    - name: Install dependencies (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        # Windows doesn't need additional system dependencies for Tauri
-        echo "Windows runner - no additional dependencies needed"
-    
-    - name: Install dependencies (Ubuntu only)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-    
-    - name: Install frontend dependencies
-      run: npm install
-    
-    - name: Debug project structure
-      run: |
-        echo "=== Project Structure ==="
-        dir
-        echo "=== Tauri Config ==="
-        type tauri.conf.json
-        echo "=== Build frontend ==="
-        npm run build:frontend
-        echo "=== Dist directory ==="
-        dir dist\
-    
-    - name: Build the app (Windows)
-      run: |
-        echo "=== Pre-build verification ==="
-        echo "Current directory: $(pwd)"
-        echo "Checking required files:"
-        if (Test-Path "tauri.conf.json") { echo "✓ tauri.conf.json exists" } else { echo "✗ tauri.conf.json missing" }
-        if (Test-Path "src-tauri\Cargo.toml") { echo "✓ src-tauri\Cargo.toml exists" } else { echo "✗ src-tauri\Cargo.toml missing" }
-        if (Test-Path "dist") { echo "✓ dist directory exists" } else { echo "✗ dist directory missing" }
-        if (Test-Path "dist\index.html") { echo "✓ dist\index.html exists" } else { echo "✗ dist\index.html missing" }
-        echo "=== Starting Tauri build ==="
-        npx tauri build --verbose --config "build.beforeBuildCommand="
-      shell: pwsh
-    
-    - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-bundle
-        path: src-tauri/target/release/bundle/msi/*.msi
-        retention-days: 30
-    
-    - name: Upload portable Windows artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-portable
-        path: src-tauri/target/release/video-space.exe
-        retention-days: 30
+  build-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            args: ''
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
 
-  build-macos:
-    runs-on: macos-14  # 使用macOS 14以避免macOS 15迁移警告
-    timeout-minutes: 30
-    if: ${{ github.event.inputs.target_platforms == 'all' || github.event.inputs.target_platforms == 'macos' }}
-    
+    runs-on: ${{ matrix.platform }}
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Debug repository structure
-      run: |
-        echo "=== Current working directory ==="
-        pwd
-        echo "=== Repository structure ==="
-        ls -la
-        echo "=== Check for Cargo.toml ==="
-        find . -name "Cargo.toml" -type f
-        echo "=== Check for tauri.conf.json ==="
-        find . -name "tauri.conf.json" -type f
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-        cache-dependency-path: 'package-lock.json'
-    
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: x86_64-apple-darwin
-    
-    - name: Install Tauri CLI
-      run: |
-        echo "Installing Tauri CLI..."
-        npm install -g @tauri-apps/cli@^2.0.0
-        echo "Tauri CLI installed successfully"
-        npx tauri --version
-    
-    - name: Debug environment (macOS)
-      run: |
-        echo "=== Environment Debug ==="
-        echo "Working directory: $(pwd)"
-        echo "Rust version:"
-        rustc --version
-        echo "Cargo version:"
-        cargo --version
-        echo "Tauri CLI version:"
-        npx tauri --version
-        echo "Environment variables:"
-        echo "PATH: $PATH"
-    
-    - name: Install frontend dependencies
-      run: npm install
-    
-    - name: Debug project structure
-      run: |
-        echo "=== Project Structure ==="
-        ls -la
-        echo "=== Tauri Config ==="
-        cat tauri.conf.json
-        echo "=== Build frontend ==="
-        npm run build:frontend
-        echo "=== Dist directory ==="
-        ls -la dist/
-    
-    - name: Build the app
-      run: |
-        echo "=== Pre-build verification ==="
-        echo "Current directory: $(pwd)"
-        echo "Checking required files:"
-        test -f tauri.conf.json && echo "✓ tauri.conf.json exists" || echo "✗ tauri.conf.json missing"
-        test -f src-tauri/Cargo.toml && echo "✓ src-tauri/Cargo.toml exists" || echo "✗ src-tauri/Cargo.toml missing"
-        test -d dist && echo "✓ dist directory exists" || echo "✗ dist directory missing"
-        test -f dist/index.html && echo "✓ dist/index.html exists" || echo "✗ dist/index.html missing"
-        echo "=== Starting Tauri build ==="
-        npx tauri build --verbose --config "build.beforeBuildCommand="
-    
-    - name: Upload macOS artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: macos-bundle
-        path: src-tauri/target/release/bundle/macos/*.app
-        retention-days: 30
-    
-    - name: Upload macOS dmg
-      uses: actions/upload-artifact@v4
-      with:
-        name: macos-dmg
-        path: src-tauri/target/release/bundle/dmg/*.dmg
-        retention-days: 30
+      - uses: actions/checkout@v4
 
-  release:
-    needs: [build-windows, build-macos]
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.create_release == 'true' && (github.event.inputs.build_type == 'release') }}
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Download Windows artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: windows-bundle
-        path: artifacts/windows/
-    
-    - name: Download Windows portable artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: windows-portable
-        path: artifacts/windows-portable/
-    
-    - name: Download macOS artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: macos-dmg
-        path: artifacts/macos/
-    
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          artifacts/windows/*.msi
-          artifacts/windows-portable/video-space.exe
-          artifacts/macos/*.dmg
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-  check-build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-        cache-dependency-path: 'package-lock.json'
-    
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Install Tauri CLI
-      run: |
-        echo "Installing Tauri CLI..."
-        npm install -g @tauri-apps/cli@^2.0.0
-        echo "Tauri CLI installed successfully"
-        npx tauri --version
-    
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-    
-    - name: Install frontend dependencies
-      run: npm install
-    
-    - name: Check Tauri configuration
-      run: npx tauri info
-    
-    - name: Validate project structure
-      run: |
-        if [ ! -f "tauri.conf.json" ]; then
-          echo "Error: tauri.conf.json not found"
-          exit 1
-        fi
-        if [ ! -d "src-tauri" ]; then
-          echo "Error: src-tauri directory not found"
-          exit 1
-        fi
-        if [ ! -f "src-tauri/Cargo.toml" ]; then
-          echo "Error: Cargo.toml not found in src-tauri"
-          exit 1
-        fi
-    
-    - name: Run lint checks
-      run: |
-        if command -v npm audit &> /dev/null; then
-          npm audit --audit-level moderate
-        fi
-    
-    - name: Upload validation results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: validation-results
-        path: |
-          package-lock.json
-          Cargo.lock
-        retention-days: 7
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: install frontend dependencies
+        run: npm install
+
+      - name: Build frontend
+        run: npm run build
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: 'Video Space v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: ${{ github.event.inputs.create_release != 'true' }}
+          prerelease: false
+          args: ${{ matrix.args }}

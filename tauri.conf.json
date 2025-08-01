@@ -5,10 +5,8 @@
   "identifier": "com.video-space.app",
   "build": {
     "beforeBuildCommand": "npm run build:frontend",
-    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:3010",
-    "frontendDist": "./dist",
-    "withGlobalTauri": false
+    "frontendDist": "./dist"
   },
   "bundle": {
     "active": true,
