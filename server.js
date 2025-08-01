@@ -616,51 +616,23 @@ async function handleProxyRequest(targetUrl, req, res) {
             return; // 早期返回，不执行下面的pipe
             
         } else if (isTS) {
-            // TS片段 - 需要特殊处理以确保正确传输
+            // TS片段 - 使用流式传输避免内存缓冲问题
             responseHeaders['Content-Type'] = response.headers['content-type'] || 'video/mp2t';
             responseHeaders['Accept-Ranges'] = 'bytes';
             responseHeaders['Cache-Control'] = 'public, max-age=86400';
             
-            // 对于TS片段，我们需要确保正确处理流
-            let totalBytes = 0;
-            let bufferChunks = [];
+            // 设置响应头
+            res.set(responseHeaders);
             
-            // 监听数据块
-            response.data.on('data', (chunk) => {
-                totalBytes += chunk.length;
-                bufferChunks.push(chunk);
-            });
-            
-            // 监听数据结束
-            response.data.on('end', () => {
-                
-                // 如果没有数据，返回错误
-                if (totalBytes === 0) {
-                    if (!res.headersSent) {
-                        res.status(500).json({ 
-                            error: 'TS片段为空', 
-                            url: targetUrl
-                        });
-                    }
-                    return;
-                }
-                
-                // 设置Content-Length
-                responseHeaders['Content-Length'] = totalBytes;
-                res.set(responseHeaders);
-                
-                // 发送缓冲的数据
-                if (bufferChunks.length > 0) {
-                    const combinedBuffer = Buffer.concat(bufferChunks);
-                    res.send(combinedBuffer);
-                }
-            });
+            // 直接将数据流管道传输到响应，避免内存缓冲
+            response.data.pipe(res);
             
             // 监听错误
             response.data.on('error', (error) => {
+                console.error('TS片段流传输错误:', error);
                 if (!res.headersSent) {
                     res.status(500).json({ 
-                        error: 'TS片段接收错误', 
+                        error: 'TS片段传输错误', 
                         details: error.message,
                         url: targetUrl
                     });
