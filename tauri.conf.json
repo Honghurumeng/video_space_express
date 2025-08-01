@@ -4,9 +4,9 @@
   "version": "1.2.0",
   "identifier": "com.video-space.app",
   "build": {
-    "beforeBuildCommand": "npm run build:frontend",
+    "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:3010",
-    "frontendDist": "./dist"
+    "frontendDist": "../dist"
   },
   "bundle": {
     "active": true,
